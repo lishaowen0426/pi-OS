@@ -72,14 +72,13 @@ RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
 
 RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
     -D warnings                   \
-    -D missing_docs
 
 FEATURES      = --features bsp_$(BSP)
 COMPILER_ARGS = --target=$(TARGET) \
     $(FEATURES)                    \
     --release
 
-RUSTC_CMD   = cargo rustc $(COMPILER_ARGS)
+RUSTC_CMD   = cargo rustc --verbose $(COMPILER_ARGS)
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
 OBJCOPY_CMD = rust-objcopy \
@@ -181,6 +180,7 @@ objdump: $(KERNEL_ELF)
 	$(call color_header, "Launching objdump")
 	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) --disassemble --demangle \
                 --section .text   \
+                --section .rodata   \
                 $(KERNEL_ELF) | rustfilt
 
 ##------------------------------------------------------------------------------
