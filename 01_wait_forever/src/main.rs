@@ -14,9 +14,12 @@ mod console;
 mod cpu;
 mod panic_wait;
 mod print;
+mod synchronization;
 
 unsafe fn kernel_init() -> ! {
-    println!("Hello from Pi!");
-
-    panic!("Stopping here.")
+    use console::console;
+    println!("[0]Hello from Pi!");
+    println!("[1] Chars written:{}", console().chars_written());
+    println!("[2]Stopping here.");
+    cpu::wait_forever()
 }

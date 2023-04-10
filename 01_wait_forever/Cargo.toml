@@ -1,7 +1,7 @@
 [package]
 name = "mingo"
 version = "0.1.0"
-authors = ["Andre Richter <andre.o.richter@gmail.com>"]
+authors = ["Li Shaowen"]
 edition = "2021"
 
 [profile.release]
@@ -21,7 +21,9 @@ path = "src/main.rs"
 ##--------------------------------------------------------------------------------------------------
 
 [dependencies]
+lock_api = "0.4.9"
 
 # Plaftform specific dependencies
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu = {version = "9.x.x"}
+
