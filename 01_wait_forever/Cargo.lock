@@ -33,6 +33,7 @@ version = "0.1.0"
 dependencies = [
  "aarch64-cpu",
  "lock_api",
+ "tock-registers",
 ]
 
 [[package]]

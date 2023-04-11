@@ -15,6 +15,7 @@ mod cpu;
 mod panic_wait;
 mod print;
 mod synchronization;
+mod driver;
 
 unsafe fn kernel_init() -> ! {
     use console::console;
