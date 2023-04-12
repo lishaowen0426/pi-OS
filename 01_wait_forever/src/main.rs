@@ -12,15 +12,16 @@
 mod bsp;
 mod console;
 mod cpu;
+mod driver;
 mod panic_wait;
 mod print;
 mod synchronization;
-mod driver;
 
-unsafe fn kernel_init() -> ! {
+unsafe fn kernel_init(el: u64) -> ! {
     use console::console;
     println!("[0]Hello from Pi!");
     println!("[1] Chars written:{}", console().chars_written());
-    println!("[2]Stopping here.");
+    println!("[2]EL: {}", el);
+    println!("[3]Stopping here.");
     cpu::wait_forever()
 }
