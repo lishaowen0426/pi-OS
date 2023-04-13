@@ -25,6 +25,18 @@ pub struct DeviceDriverDescriptor {
     post_init_callback: Option<DeviceDriverPostInitCallback>,
 }
 
+impl DeviceDriverDescriptor {
+    pub fn new(
+        device_driver: &'static (dyn interface::DeviceDriver + Sync),
+        post_init_callback: Option<DeviceDriverPostInitCallback>,
+    ) -> Self {
+        Self {
+            device_driver,
+            post_init_callback,
+        }
+    }
+}
+
 pub struct DriverManager {
     inner: Spinlock<DriverManngerInner>,
 }

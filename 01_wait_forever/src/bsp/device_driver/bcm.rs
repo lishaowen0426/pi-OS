@@ -1,3 +1,5 @@
-mod bcm2xxx_gpio;
+mod gpio;
+mod uart;
 
-pub use bcm2xxx_gpio::*;
+pub use gpio::*;
+pub use uart::*;

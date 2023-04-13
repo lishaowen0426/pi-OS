@@ -13,6 +13,16 @@ include ../common/operating_system.mk
 # Default to the RPi3.
 BSP ?= rpi3
 
+ifeq ($(shell uname -s),Linux)
+	DEV_SERIAL = /dev/ttyUSB
+	DOCKER_CMD_DEV = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_DEV)
+    DOCKER_MINITERM = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
+else
+	DEV_SERIAL = /dev/cu.usbserial-AQ043M36
+
+endif
+
+
 
 
 ##--------------------------------------------------------------------------------------------------
@@ -88,6 +98,7 @@ OBJCOPY_CMD = rust-objcopy \
 
 EXEC_QEMU = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
 EXEC_TEST_DISPATCH = rudy ../common/tests/dispatch.rb
+EXEC_MINITERM      = ruby ../common/serial/miniterm.rb
 
 ##------------------------------------------------------------------------------
 ## Dockerization
@@ -106,7 +117,8 @@ DOCKER_TEST  = $(DOCKER_CMD) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc qemu clippy clean readelf objdump nm check
+.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm
+
 
 all: $(KERNEL_BIN)
 
@@ -142,6 +154,10 @@ $(KERNEL_BIN): $(KERNEL_ELF)
 doc:
 	$(call color_header, "Generating docs")
 	@$(DOC_CMD) --document-private-items --open
+
+
+miniterm:
+	@$(DOCKER_MINITERM) $(EXEC_MINITERM) $(DEV_SERIAL)
 
 ##------------------------------------------------------------------------------
 ## Run the kernel in QEMU

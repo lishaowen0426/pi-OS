@@ -23,6 +23,7 @@ path = "src/main.rs"
 [dependencies]
 lock_api = "0.4.9"
 tock-registers = { version = "0.8.x", default-features = false, features = ["register_types"], optional = true }
+cfg-if = "1.0"
 
 # Plaftform specific dependencies
 [target.'cfg(target_arch = "aarch64")'.dependencies]

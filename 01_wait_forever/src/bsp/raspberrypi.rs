@@ -4,8 +4,8 @@
 
 //! Top-level BSP file for the Raspberry Pi 3 and 4.
 
-pub mod console;
 pub mod cpu;
+pub mod driver;
 pub mod memory;
 
 pub fn board_name() -> &'static str {
