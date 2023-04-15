@@ -172,8 +172,8 @@ impl PL011UartInner {
 
         self.registers.CR.set(0);
         self.registers.ICR.write(ICR::ALL::CLEAR);
-        self.registers.IBRD.write(IBRD::BAUD_DIVINT.val(3));
-        self.registers.FBRD.write(FBRD::BAUD_DIVFRAC.val(16));
+        self.registers.IBRD.write(IBRD::BAUD_DIVINT.val(0x2));
+        self.registers.FBRD.write(FBRD::BAUD_DIVFRAC.val(0xB));
         self.registers
             .LCR_H
             .write(LCR_H::WLEN::EightBit + LCR_H::FEN::FifosEnabled);

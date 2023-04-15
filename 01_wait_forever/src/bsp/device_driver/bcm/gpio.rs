@@ -106,7 +106,7 @@ impl GPIOInner {
     }
 
     #[cfg(feature = "bsp_rpi3")]
-    fn disable_pud_14_15_bcm2837(&mut self) {
+    fn disable_pud_14_15(&mut self) {
         use crate::cpu;
 
         // Make an educated guess for a good delay value (Sequence described in the BCM2837
@@ -133,10 +133,37 @@ impl GPIOInner {
 
     /// Disable pull-up/down on pins 14 and 15.
     #[cfg(feature = "bsp_rpi4")]
-    fn disable_pud_14_15_bcm2711(&mut self) {
+    fn disable_pud_14_15(&mut self) {
         self.registers.GPIO_PUP_PDN_CNTRL_REG0.write(
             GPIO_PUP_PDN_CNTRL_REG0::GPIO_PUP_PDN_CNTRL15::PullUp
                 + GPIO_PUP_PDN_CNTRL_REG0::GPIO_PUP_PDN_CNTRL14::PullUp,
+        );
+    }
+
+    #[cfg(feature = "bsp_rpi3")]
+    fn pull_none_14_15(&mut self) {
+        use crate::cpu;
+
+        const DELAY: usize = 2000;
+
+        self.registers.GPPUD.write(GPPUD::PUD::Off);
+        cpu::spin_for_cycles(DELAY);
+
+        self.registers
+            .GPPUDCLK0
+            .write(GPPUDCLK0::PUDCLK15::AssertClock + GPPUDCLK0::PUDCLK14::AssertClock);
+        cpu::spin_for_cycles(DELAY);
+
+        self.registers.GPPUD.write(GPPUD::PUD::Off);
+        self.registers.GPPUDCLK0.set(0);
+    }
+
+    /// Disable pull-up/down on pins 14 and 15.
+    #[cfg(feature = "bsp_rpi4")]
+    fn pull_none_14_15(&mut self) {
+        self.registers.GPIO_PUP_PDN_CNTRL_REG0.write(
+            GPIO_PUP_PDN_CNTRL_REG0::GPIO_PUP_PDN_CNTRL15::NoResistor
+                + GPIO_PUP_PDN_CNTRL_REG0::GPIO_PUP_PDN_CNTRL14::NoResistor,
         );
     }
 
@@ -147,11 +174,15 @@ impl GPIOInner {
             .modify(GPFSEL1::FSEL15::AltFunc0 + GPFSEL1::FSEL14::AltFunc0);
 
         // Disable pull-up/down on pins 14 and 15.
-        #[cfg(feature = "bsp_rpi3")]
-        self.disable_pud_14_15_bcm2837();
-
-        #[cfg(feature = "bsp_rpi4")]
-        self.disable_pud_14_15_bcm2711();
+        // self.disable_pud_14_15();
+        self.pull_none_14_15();
+    }
+    pub fn map_mini_uart(&mut self) {
+        // Select the UART on pins 14 and 15.
+        self.pull_none_14_15();
+        self.registers
+            .GPFSEL1
+            .modify(GPFSEL1::FSEL15::AltFunc5 + GPFSEL1::FSEL14::AltFunc5);
     }
 }
 
@@ -167,6 +198,10 @@ impl GPIO {
     pub fn map_pl011_uart(&self) {
         let mut locked = self.inner.lock();
         locked.map_pl011_uart()
+    }
+    pub fn map_mini_uart(&self) {
+        let mut locked = self.inner.lock();
+        locked.map_mini_uart()
     }
 }
 
