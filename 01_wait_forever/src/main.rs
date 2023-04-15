@@ -40,12 +40,12 @@ const AUX_MU_BAUD_REG: usize = AUX_BASE + 104;
 
 fn mmio_write(reg: usize, val: u32) {
     unsafe {
-        *(reg as *mut u32) = val;
+        core::ptr::write_volatile(reg as *mut u32, val);
     }
 }
 
 fn mmio_read(reg: usize) -> u32 {
-    unsafe { *(reg as *mut u32) }
+    unsafe { core::ptr::read_volatile(reg as *const u32) }
 }
 
 fn gpio_call(pin_number: u32, value: u32, base: usize, field_size: u32, field_max: u32) -> u32 {
@@ -122,12 +122,13 @@ unsafe fn kernel_init(el: u64) -> ! {
     mmio_write(AUX_MU_IER_REG, 0);
     mmio_write(AUX_MU_IIR_REG, 0xC6); // disable interrupts
     mmio_write(AUX_MU_BAUD_REG, aux_mu_baud(115200, 500000000));
-    gpio_useAsAlt5(14);
-    gpio_useAsAlt5(15);
+    //    gpio_useAsAlt5(14);
+    //  gpio_useAsAlt5(15);
     mmio_write(AUX_MU_CNTL_REG, 3); // enable RX/TX
                                     //
                                     //
     uart_writeText("hello world\n");
+    uart_writeText("what??\n");
 
     kernel_main()
 }
