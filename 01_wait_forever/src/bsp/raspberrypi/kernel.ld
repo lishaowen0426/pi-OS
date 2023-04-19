@@ -19,6 +19,7 @@ PHDRS
 {
     segment_boot_core_stack PT_LOAD FLAGS(6);
     segment_code PT_LOAD FLAGS(5);
+    segment_bss PT_LOAD FLAGS(6);
     segment_data PT_LOAD FLAGS(6);
 }
 
@@ -45,7 +46,7 @@ SECTIONS
         *(.text*)
     } :segment_code
 
-    .rodata : ALIGN(8) { *(.rodata) } :segment_code
+    .rodata : ALIGN(8) { *(.rodata*) } :segment_code
 
     /***********************************************************************************************
     * Data + BSS
@@ -58,7 +59,7 @@ SECTIONS
         *(.bss*);
         . = ALIGN(16);
         __bss_end_exclusive = .;
-    }: segment_data
+    }: segment_bss
 
     /***********************************************************************************************
     * Misc

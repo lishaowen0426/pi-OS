@@ -51,6 +51,21 @@ get_exception_level:
     lsr  x0, x0, #2
     ret
 
+my_try_lock:
+    ADR_REL x0,  TEST_DATA 
+	mov	x8, x0
+	//strb	wzr, [x0]
+.my_try_lock_1:
+	ldaxrb	w9, [x8]
+	cbnz	w9, .my_try_lock_4
+	mov	w0, #42
+	stlxrb	w9, w0, [x8]
+	cbnz	w9, .my_try_lock_1
+	ret
+.my_try_lock_4:
+	mov	w0, wzr
+	clrex
+	ret
 
 
 .size	_start, . - _start

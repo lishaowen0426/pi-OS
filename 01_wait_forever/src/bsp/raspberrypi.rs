@@ -4,9 +4,13 @@
 
 //! Top-level BSP file for the Raspberry Pi 3 and 4.
 
-pub mod cpu;
-pub mod driver;
-pub mod memory;
+mod cpu;
+mod driver;
+mod memory;
+
+pub use cpu::*;
+pub use driver::*;
+pub use memory::*;
 
 pub fn board_name() -> &'static str {
     #[cfg(feature = "bsp_rpi3")]

@@ -35,7 +35,7 @@ ifeq ($(BSP),rpi3)
     KERNEL_BIN        = kernel8.img
     QEMU_BINARY       = qemu-system-aarch64
     QEMU_MACHINE_TYPE = raspi3b
-    QEMU_RELEASE_ARGS =  -serial stdio -display none
+    QEMU_RELEASE_ARGS = -serial stdio -display none
     OBJDUMP_BINARY    = aarch64-none-elf-objdump
     NM_BINARY         = aarch64-none-elf-nm
     READELF_BINARY    = aarch64-none-elf-readelf
@@ -78,7 +78,9 @@ KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST)
 ##--------------------------------------------------------------------------------------------------
 RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
     -C link-arg=--library-path=$(LD_SCRIPT_PATH) \
-    -C link-arg=--script=$(KERNEL_LINKER_SCRIPT)
+    -C link-arg=--script=$(KERNEL_LINKER_SCRIPT) \
+	--emit asm                                   \
+#	-C opt-level=0                               \
 
 
 RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
@@ -86,9 +88,12 @@ RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
 FEATURES      = --features bsp_$(BSP)
 COMPILER_ARGS = --target=$(TARGET) \
     $(FEATURES)                    \
-    --release
+	--release
 
-RUSTC_CMD   = cargo rustc --verbose $(COMPILER_ARGS)
+RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir 
+    
+
+RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS)
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(FEATURES) --target=$(TARGET) --verbose
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -212,4 +217,7 @@ nm: $(KERNEL_ELF)
 	@$(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $(KERNEL_ELF) | sort | rustfilt
 
 
+mir: ${KERNEL_ELF_DEPS}
+	$(call color_header, "Generating Rust mir")
+	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(RUSTC_CMD) $(RUSTC_ARGS)
 

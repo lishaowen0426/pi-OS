@@ -1,24 +1,28 @@
-use core::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "bsp_rpi3")]
+use crate::println_qemu;
+use core::sync::atomic::AtomicU8;
 use lock_api::{GuardSend, RawMutex};
 
-pub struct RawSpinlock(AtomicBool);
+pub struct RawSpinlock(pub AtomicU8);
 
+
+/// certain conditioins need to occur before
+/// atomics can really work on aarch64 
+/// see https://stackoverflow.com/questions/68785276/bare-metal-spinlock-implementation-in-rust
 unsafe impl RawMutex for RawSpinlock {
-    const INIT: RawSpinlock = RawSpinlock(AtomicBool::new(false));
+    const INIT: RawSpinlock = RawSpinlock(AtomicU8::new(0));
 
     type GuardMarker = GuardSend;
 
     fn lock(&self) {
         while !self.try_lock() {}
     }
-
+    #[no_mangle]
+    #[inline(never)]
     fn try_lock(&self) -> bool {
-        self.0
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
+        true
     }
 
-    unsafe fn unlock(&self) {
-        self.0.store(false, Ordering::Release);
-    }
+    #[no_mangle]
+    unsafe fn unlock(&self) {}
 }

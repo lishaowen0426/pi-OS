@@ -1,7 +1,8 @@
-#[cfg(any(feature = "bsp_rpi3", feature = "bsp_rpi4"))]
-mod bcm;
-mod common;
+mod gpio;
+mod mini_uart;
+mod mmio_wrapper;
+pub mod utils;
 
-#[cfg(any(feature = "bsp_rpi3", feature = "bsp_rpi4"))]
-pub use bcm::*;
-pub use common::*;
+pub use gpio::*;
+pub use mini_uart::*;
+pub use mmio_wrapper::*;
