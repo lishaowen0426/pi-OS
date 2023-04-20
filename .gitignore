@@ -5,6 +5,7 @@
 node_modules
 .bundle
 .vendor
+.vscode
 
 Gemfile.lock
 package*.json

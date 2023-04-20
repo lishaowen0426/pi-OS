@@ -1,5 +1,5 @@
 [package]
-name = "mingo"
+name = "pi-os"
 version = "0.1.0"
 authors = ["Li Shaowen"]
 edition = "2021"
