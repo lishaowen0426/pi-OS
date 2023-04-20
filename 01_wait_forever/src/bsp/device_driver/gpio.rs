@@ -1,5 +1,5 @@
 use crate::{
-    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver, synchronization,
+    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver,
     synchronization::Spinlock,
 };
 

@@ -1,6 +1,6 @@
 use crate::{
     bsp::{device_driver, mmio},
-    console, driver as generic_driver,
+    driver as generic_driver,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 

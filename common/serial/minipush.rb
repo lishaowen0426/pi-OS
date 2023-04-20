@@ -35,10 +35,16 @@ class MiniPush < MiniTerm
             count = 0
 
             loop do
+                if received.nil?
+                  puts "receive nil"
+                end
+
                 raise ProtocolError if received.nil?
 
-                received.chars.each do |c|
-                    if c == "\u{3}"
+
+                received.each_char do |c|
+                    if c == '4'
+                    #if c == "3"
                         count += 1
                         return true if count == 3
                     else
@@ -100,6 +106,7 @@ class MiniPush < MiniTerm
         load_payload
         send_size
         send_payload
+        puts 'after send'
         terminal
     rescue ConnectionError, EOFError, Errno::EIO, ProtocolError, Timeout::Error => e
         handle_reconnect(e)

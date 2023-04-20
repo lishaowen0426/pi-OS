@@ -35,12 +35,10 @@ global_asm!(
 
 extern "C" {
     fn get_exception_level() -> u64;
-    fn my_try_lock() -> u32;
 }
 
 #[no_mangle]
 pub unsafe fn _start_rust() -> ! {
     // let el = get_exception_level();
-    let res = my_try_lock();
-    crate::kernel_init(res)
+    crate::kernel_init()
 }

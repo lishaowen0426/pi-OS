@@ -12,8 +12,7 @@ require 'colorize'
 require 'io/console'
 require 'serialport'
 
-#SERIAL_BAUD = 115_200
-SERIAL_BAUD = 921_600
+SERIAL_BAUD = 115_200
 
 class ConnectionError < StandardError; end
 

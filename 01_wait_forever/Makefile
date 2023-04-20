@@ -17,6 +17,7 @@ ifeq ($(shell uname -s),Linux)
 	DEV_SERIAL = /dev/ttyUSB
 	DOCKER_CMD_DEV = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_DEV)
     DOCKER_MINITERM = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
+ 	DOCKER_CHAINBOOT = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
 else
 	DEV_SERIAL = /dev/cu.usbserial-AQ043M36
 
@@ -41,6 +42,7 @@ ifeq ($(BSP),rpi3)
     READELF_BINARY    = aarch64-none-elf-readelf
     LD_SCRIPT_PATH    = $(shell pwd)/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a53
+	CHAINBOOT_DEMO_PAYLOAD = demo_payload_rpi4.img
 else ifeq ($(BSP),rpi4)
     TARGET            = aarch64-unknown-none-softfloat
     KERNEL_BIN        = kernel8.img
@@ -52,6 +54,7 @@ else ifeq ($(BSP),rpi4)
     READELF_BINARY    = aarch64-none-elf-readelf
     LD_SCRIPT_PATH    = $(shell pwd)/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a72
+	CHAINBOOT_DEMO_PAYLOAD = demo_payload_rpi4.img
 endif
 
 # Export for build.rs.
@@ -117,12 +120,13 @@ DOCKER_QEMU  = $(DOCKER_CMD_INTERACT) $(DOCKER_IMAGE)
 DOCKER_TOOLS = $(DOCKER_CMD) $(DOCKER_IMAGE)
 DOCKER_TEST  = $(DOCKER_CMD) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
 
-
+EXEC_TEST_MINIPUSH = ruby tests/chainboot_test.rb
+EXEC_MINIPUSH      = ruby ../common/serial/minipush.rb
 
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm
+.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm chainboot
 
 
 all: $(KERNEL_BIN)
@@ -169,15 +173,15 @@ miniterm:
 ##------------------------------------------------------------------------------
 ifeq ($(QEMU_MACHINE_TYPE),) # QEMU is not supported for the board.
 
-qemu:
+qemu qemuasm:
 	$(call color_header, "$(QEMU_MISSING_STRING)")
 
 else # QEMU is supported.
 
-	#@$(DOCKER_QEMU) $(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN)
-qemu: $(KERNEL_BIN)
-	$(call color_header, "Launching QEMU")
-	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN)
+
+qemuasm: $(KERNEL_BIN)
+	$(call color_header, "Launching QEMU with ASM output")
+	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN) -d in_asm
 endif
 
 ##------------------------------------------------------------------------------
@@ -221,3 +225,6 @@ mir: ${KERNEL_ELF_DEPS}
 	$(call color_header, "Generating Rust mir")
 	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(RUSTC_CMD) $(RUSTC_ARGS)
 
+
+chainboot : $(KERNEL_BIN)
+	$(EXEC_MINIPUSH) $(DEV_SERIAL) $(CHAINBOOT_DEMO_PAYLOAD)

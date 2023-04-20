@@ -4,21 +4,20 @@ use crate::console::QEMU_CONSOLE;
 use crate::console::{CONSOLE, DEBUG_CONSOLE};
 use core::fmt;
 
-use crate::console::interface::Write;
-
 pub fn _print(args: fmt::Arguments) {
-    let mut locked = CONSOLE.lock();
-    locked.write_fmt(args).unwrap();
+    let locked = CONSOLE.lock();
+    locked._write_fmt(args).unwrap();
 }
 
 pub fn _print_debug(args: fmt::Arguments) {
     unsafe {
-        DEBUG_CONSOLE.write_fmt(args).unwrap();
+        DEBUG_CONSOLE._write_fmt(args).unwrap();
     }
 }
 
 #[cfg(feature = "bsp_rpi3")]
 pub fn _print_qemu(args: fmt::Arguments) {
+    use core::fmt::Write;
     unsafe {
         QEMU_CONSOLE.write_fmt(args).unwrap();
     }
