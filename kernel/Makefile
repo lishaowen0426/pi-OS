@@ -11,7 +11,7 @@ include ../common/operating_system.mk
 ##--------------------------------------------------------------------------------------------------
 
 # Default to the RPi3.
-BSP ?= rpi3
+BSP ?= rpi4
 
 ifeq ($(shell uname -s),Linux)
 	DEV_SERIAL = /dev/ttyUSB
@@ -42,7 +42,6 @@ ifeq ($(BSP),rpi3)
     READELF_BINARY    = aarch64-none-elf-readelf
     LD_SCRIPT_PATH    = $(shell pwd)/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a53
-	CHAINBOOT_DEMO_PAYLOAD = demo_payload_rpi4.img
 else ifeq ($(BSP),rpi4)
     TARGET            = aarch64-unknown-none-softfloat
     KERNEL_BIN        = kernel8.img
@@ -54,7 +53,6 @@ else ifeq ($(BSP),rpi4)
     READELF_BINARY    = aarch64-none-elf-readelf
     LD_SCRIPT_PATH    = $(shell pwd)/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a72
-	CHAINBOOT_DEMO_PAYLOAD = demo_payload_rpi4.img
 endif
 
 # Export for build.rs.
@@ -178,6 +176,9 @@ qemu qemuasm:
 
 else # QEMU is supported.
 
+qemu: $(KERNEL_BIN)
+	$(call color_header, "Launching QEMU")
+	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN) 
 
 qemuasm: $(KERNEL_BIN)
 	$(call color_header, "Launching QEMU with ASM output")
@@ -227,4 +228,4 @@ mir: ${KERNEL_ELF_DEPS}
 
 
 chainboot : $(KERNEL_BIN)
-	$(EXEC_MINIPUSH) $(DEV_SERIAL) $(CHAINBOOT_DEMO_PAYLOAD)
+	$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)

@@ -31,6 +31,7 @@ const SCTLR_VALUE_MMU_DISABLED: u32 = (SCTLR_RESERVED
 global_asm!(
     include_str!("boot.s"),
     CONST_CORE_ID_MASK = const 0b11 ,
+    CONST_EL2 = const 0b1000,
 );
 
 extern "C" {

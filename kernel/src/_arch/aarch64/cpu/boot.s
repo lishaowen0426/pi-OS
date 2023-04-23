@@ -26,39 +26,36 @@
 // fn _start()
 //------------------------------------------------------------------------------
 _start:
-    mrs         x0, MPIDR_EL1
-    and         x0, x0, {CONST_CORE_ID_MASK}
-    ldr         x1, BOOT_CORE_ID
-    cmp         x0, x1
+    mrs         x0, CurrentEL
+    cmp         x0, {CONST_EL2}
     b.ne        .L_parking_loop
 
-    ADR_LINK    x0, __bss_start
-    ADR_LINK    x1, __bss_end_exclusive
+    mrs         x1, MPIDR_EL1
+    and         x1, x1, {CONST_CORE_ID_MASK}
+    ldr         x2, BOOT_CORE_ID
+    cmp         x1, x2
+    b.ne        .L_parking_loop
+
+    ADR_LOAD    x0, __bss_start
+    ADR_LOAD    x1, __bss_end_exclusive
 
 
 .L_bss_init_loop:
     cmp         x0, x1
-    b.eq        .L_relocate_binary
+    b.eq        .L_prepare_rust
     stp         xzr, xzr, [x0], #16
     b           .L_bss_init_loop
 
-.L_relocate_binary:
-    ADR_LOAD    x0, __binary_nonzero_start  // the load-time binary address
-    ADR_LINK    x1, __binary_nonzero_start  // the link-time binary address
-    ADR_LINK    x2, __binary_nonzero_end_exclusive
 
-.L_copy_loop:      //copy from the load-time address to the link-time address
-    ldr         x3, [x0], #8
-    str         x3, [x1], #8
-    cmp         x1, x2
-    b.lo        .L_copy_loop
+.L_prepare_rust:
+    ADR_LOAD x0, __boot_core_stack_end_exclusive
+    mov sp, x0
 
-    ADR_LINK    x0, __boot_core_stack_end_exclusive 
-    mov         sp, x0
 
-    ADR_LINK    x1, _start_rust
-    br          x1
-    
+    // x0 holds the function argument to _start_rust
+    b _start_rust
+
+
     
 	// Infinitely wait for events (aka "park the core").
 .L_parking_loop:

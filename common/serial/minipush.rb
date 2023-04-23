@@ -106,7 +106,6 @@ class MiniPush < MiniTerm
         load_payload
         send_size
         send_payload
-        puts 'after send'
         terminal
     rescue ConnectionError, EOFError, Errno::EIO, ProtocolError, Timeout::Error => e
         handle_reconnect(e)

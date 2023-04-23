@@ -1,7 +1,6 @@
 const GPIO_OFFSET: usize = 0x0020_0000;
 const UART_OFFSET: usize = 0x0020_1000;
 const MINI_UART_OFFSET: usize = 0x0021_5000;
-const BOARD_DEFAULT_LOAD_ADDRESS: usize = 0x8_0000;
 
 #[cfg(feature = "bsp_rpi3")]
 pub mod mmio {
@@ -19,9 +18,4 @@ pub mod mmio {
     pub const GPIO_START: usize = START + GPIO_OFFSET;
     pub const UART_START: usize = START + UART_OFFSET;
     pub const MINI_UART_START: usize = START + MINI_UART_OFFSET;
-}
-
-#[inline(always)]
-pub fn board_default_load_addr() -> *const u64 {
-    BOARD_DEFAULT_LOAD_ADDRESS as _
 }
