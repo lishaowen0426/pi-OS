@@ -1,13 +1,6 @@
+use crate::exception::PrivilegeLevel;
 use aarch64_cpu::registers::*;
 use tock_registers::interfaces::Readable;
-
-#[derive(Eq, PartialEq)]
-pub enum PrivilegeLevel {
-    User,
-    Kernel,
-    Hypervisor,
-    Unknown,
-}
 
 pub fn current_privilege_level() -> (PrivilegeLevel, &'static str) {
     let el = CurrentEL.read_as_enum(CurrentEL::EL);

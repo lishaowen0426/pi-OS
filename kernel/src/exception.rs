@@ -3,3 +3,11 @@
 mod arch_exception;
 
 pub use arch_exception::*;
+
+#[derive(Eq, PartialEq)]
+pub enum PrivilegeLevel {
+    User,
+    Kernel,
+    Hypervisor,
+    Unknown,
+}

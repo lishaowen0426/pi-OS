@@ -11,7 +11,9 @@
 //!
 //! crate::cpu::boot::arch_boot
 
+use aarch64_cpu::{asm, registers::*};
 use core::arch::global_asm;
+use tock_registers::interfaces::Writeable;
 
 const SCTLR_RESERVED: u32 = (3 << 28) | (3 << 22) | (1 << 20) | (1 << 11);
 const SCTLR_EE_LITTLE_ENDIAN: u32 = 0 << 25;
@@ -34,12 +36,27 @@ global_asm!(
     CONST_EL2 = const 0b1000,
 );
 
-extern "C" {
-    fn get_exception_level() -> u64;
+#[inline(always)]
+unsafe fn prepare_el1_to_el1(phys_boot_core_stack_end_exclusive_addr: u64) {
+    CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCEN::SET + CNTHCTL_EL2::EL1PCTEN::SET);
+    CNTVOFF_EL2.set(0);
+
+    HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
+
+    SPSR_EL2.write(
+        SPSR_EL2::D::Masked
+            + SPSR_EL2::A::Masked
+            + SPSR_EL2::I::Masked
+            + SPSR_EL2::F::Masked
+            + SPSR_EL2::M::EL1h,
+    );
+
+    ELR_EL2.set(crate::kernel_init as *const () as u64);
+    SP_EL1.set(phys_boot_core_stack_end_exclusive_addr);
 }
 
 #[no_mangle]
-pub unsafe fn _start_rust() -> ! {
-    // let el = get_exception_level();
-    crate::kernel_init()
+pub unsafe extern "C" fn _start_rust(phys_boot_core_stack_end_exclusive_addr: u64) -> ! {
+    prepare_el1_to_el1(phys_boot_core_stack_end_exclusive_addr);
+    asm::eret()
 }

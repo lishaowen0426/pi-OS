@@ -1,7 +1,4 @@
-use crate::{
-    bsp::device_driver::MINI_UART,
-    synchronization::{Spinlock, SpinlockGuard},
-};
+use crate::{bsp::device_driver::MINI_UART, synchronization::Spinlock};
 
 pub mod interface {
     pub use core::fmt;

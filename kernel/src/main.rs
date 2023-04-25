@@ -7,16 +7,20 @@
 #![feature(panic_info_message)]
 #![feature(custom_test_frameworks)]
 #![feature(sync_unsafe_cell)]
-#![allow(dead_code)]
+#![feature(macro_metavar_expr)]
+#![feature(error_in_core)]
 #![no_main]
 #![no_std]
+#![allow(dead_code)]
 
 mod bsp;
 mod console;
 mod cpu;
 mod driver;
+mod errno;
 mod exception;
 mod macros;
+mod memory;
 mod panic_wait;
 mod print;
 mod synchronization;
@@ -26,8 +30,6 @@ unsafe fn kernel_init() -> ! {
     println_qemu!("I am qemu!");
 
     console::init_console();
-    println!("");
-    println!("new kernel");
 
     kernel_main()
 }
@@ -35,6 +37,8 @@ unsafe fn kernel_init() -> ! {
 fn kernel_main() -> ! {
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
+
+    memory::MMU.config_tcr_el1().unwrap();
 
     loop {}
 }

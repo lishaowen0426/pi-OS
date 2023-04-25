@@ -63,15 +63,10 @@ _start:
 	b	.L_parking_loop
 
 
-get_exception_level:
-    mrs  x0, CurrentEL
-    lsr  x0, x0, #2
-    ret
-
 
 
 
 .size	_start, . - _start
 .type	_start, function
 .global	_start
-.global get_exception_level
+
