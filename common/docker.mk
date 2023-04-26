@@ -1,1 +1,1 @@
-DOCKER_IMAGE := pios-dev:0.1
+DOCKER_IMAGE := pi-os:0.1
