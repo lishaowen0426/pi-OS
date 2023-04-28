@@ -14,3 +14,6 @@ pub use arch_cpu::{nop, wait_forever};
 
 #[cfg(feature = "bsp_rpi3")]
 pub use arch_cpu::spin_for_cycles;
+
+#[cfg(feature = "test_build")]
+pub use arch_cpu::{qemu_exit_failure, qemu_exit_success};

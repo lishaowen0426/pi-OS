@@ -33,3 +33,14 @@ impl Granule for TGRAN64K {
 pub struct PageDescriptor;
 pub struct BlockDescriptor;
 pub struct TableDescriptor;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_macros::kernel_test;
+
+    #[kernel_test]
+    fn test_should_pass() {
+        assert!(0 == 0)
+    }
+}

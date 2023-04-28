@@ -1,0 +1,11 @@
+[workspace]
+
+members = [
+    "libraries/*",
+    "kernel"
+]
+exclude = ["chainboot_kernel", "X1_JTAG_boot"]
+
+[profile.release]
+lto = true
+

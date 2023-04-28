@@ -2,9 +2,9 @@
 ##
 ## Copyright (c) 2018-2022 Andre Richter <andre.o.richter@gmail.com>
 
-include ../common/docker.mk
-include ../common/format.mk
-include ../common/operating_system.mk
+include ./common/docker.mk
+include ./common/format.mk
+include ./common/operating_system.mk
 
 ##--------------------------------------------------------------------------------------------------
 ## Optional, user-provided configuration values
@@ -37,25 +37,27 @@ ifeq ($(BSP),rpi3)
     QEMU_BINARY       = qemu-system-aarch64
     QEMU_MACHINE_TYPE = raspi3b
     QEMU_RELEASE_ARGS = -serial stdio -display none
+	QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
     OBJDUMP_BINARY    = aarch64-none-elf-objdump
     NM_BINARY         = aarch64-none-elf-nm
     READELF_BINARY    = aarch64-none-elf-readelf
     OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi3.cfg
-    JTAG_BOOT_IMAGE   = ../X1_JTAG_boot/jtag_boot_rpi3.img
-    LD_SCRIPT_PATH    = $(shell pwd)/src/bsp/raspberrypi
+    JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi3.img
+    LD_SCRIPT_PATH    = $(shell pwd)/kernel/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a53
 else ifeq ($(BSP),rpi4)
     TARGET            = aarch64-unknown-none-softfloat
     KERNEL_BIN        = kernel8.img
     QEMU_BINARY       = qemu-system-aarch64
-    QEMU_MACHINE_TYPE =
+    QEMU_MACHINE_TYPE = raspi3b #qemu does not support pi4 yet
     QEMU_RELEASE_ARGS = -serial stdio -display none
+	QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
     OBJDUMP_BINARY    = aarch64-none-elf-objdump
     NM_BINARY         = aarch64-none-elf-nm
     READELF_BINARY    = aarch64-none-elf-readelf
     OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi4.cfg
-    JTAG_BOOT_IMAGE   = ../X1_JTAG_boot/jtag_boot_rpi4.img
-    LD_SCRIPT_PATH    = $(shell pwd)/src/bsp/raspberrypi
+    JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi4.img
+    LD_SCRIPT_PATH    = $(shell pwd)/kernel/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a72
 endif
 
@@ -67,7 +69,7 @@ export LD_SCRIPT_PATH
 ##--------------------------------------------------------------------------------------------------
 ## Targets and Prerequisites
 ##--------------------------------------------------------------------------------------------------
-KERNEL_MANIFEST      = Cargo.toml
+KERNEL_MANIFEST      = kernel/Cargo.toml
 KERNEL_LINKER_SCRIPT = kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
@@ -99,25 +101,25 @@ COMPILER_ARGS = --target=$(TARGET) \
 RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir 
     
 
-RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS)
+RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
-TEST_CMD    = cargo test $(FEATURES) --target=$(TARGET) --verbose
+TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
 OBJCOPY_CMD = rust-objcopy \
     --strip-all            \
     -O binary
 
 EXEC_QEMU = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
-EXEC_TEST_DISPATCH = rudy ../common/tests/dispatch.rb
-EXEC_MINITERM      = ruby ../common/serial/miniterm.rb
+EXEC_TEST_DISPATCH = rudy common/tests/dispatch.rb
+EXEC_MINITERM      = ruby common/serial/miniterm.rb
 
 ##------------------------------------------------------------------------------
 ## Dockerization
 ##------------------------------------------------------------------------------
 DOCKER_CMD          = docker run -t --rm -v $(shell pwd):/work/tutorial -w /work/tutorial
 DOCKER_CMD_INTERACT = $(DOCKER_CMD) -i
-DOCKER_ARG_DIR_COMMON = -v $(shell pwd)/../common:/work/common
-DOCKER_ARG_DIR_JTAG   = -v $(shell pwd)/../X1_JTAG_boot:/work/X1_JTAG_boot
+DOCKER_ARG_DIR_COMMON = -v $(shell pwd)/common:/work/common
+DOCKER_ARG_DIR_JTAG   = -v $(shell pwd)/X1_JTAG_boot:/work/X1_JTAG_boot
 DOCKER_ARG_DEV        = --privileged -v /dev:/dev
 DOCKER_ARG_NET        = --network host
 DOCKER_CMD_DEV = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_DEV)
@@ -131,7 +133,6 @@ DOCKER_GDB   = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_NET) $(DOCKER_IMAGE)
 DOCKER_OPENOCD   = $(DOCKER_CMD_DEV) $(DOCKER_ARG_NET) $(DOCKER_IMAGE)
 
 EXEC_TEST_MINIPUSH = ruby tests/chainboot_test.rb
-EXEC_MINIPUSH      = ruby ../common/serial/minipush.rb
 
 ifeq ($(shell uname -s),Linux)
     DOCKER_CMD_DEV = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_DEV)
@@ -144,7 +145,7 @@ endif
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm chainboot
+.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm chainboot test_unit
 
 
 all: $(KERNEL_BIN)
@@ -265,4 +266,33 @@ openocd:
 
 jtagboot:
 	@$(DOCKER_JTAGBOOT) $(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
+
+test_unit: FEATURES += --features test_build
+
+define KERNEL_TEST_RUNNER
+#!/usr/bin/env bash
+
+    # The cargo test runner seems to change into the crate under test's directory. Therefore, ensure
+    # this script executes from the root.
+    cd $(shell pwd)
+
+    TEST_ELF=$$(echo $$1 | sed -e 's/.*target/target/g')
+    TEST_BINARY=$$(echo $$1.img | sed -e 's/.*target/target/g')
+
+    $(OBJCOPY_CMD) $$TEST_ELF $$TEST_BINARY
+    $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS) -kernel $$TEST_BINARY
+endef
+
+export KERNEL_TEST_RUNNER
+
+define test_prepare
+    @mkdir -p target
+    @echo "$$KERNEL_TEST_RUNNER" > target/kernel_test_runner.sh
+    @chmod +x target/kernel_test_runner.sh
+endef
+
+test_unit:
+	$(call color_header, "Compiling unit test(s) - $(BSP)")
+	$(call test_prepare)
+	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) --lib
 

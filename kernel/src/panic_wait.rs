@@ -7,6 +7,20 @@
 use crate::{cpu, println};
 use core::panic::PanicInfo;
 
+#[linkage = "weak"]
+#[no_mangle]
+fn _panic_exit() -> ! {
+    #[cfg(not(feature = "test_build"))]
+    {
+        cpu::wait_forever()
+    }
+
+    #[cfg(feature = "test_build")]
+    {
+        cpu::qemu_exit_failure()
+    }
+}
+
 fn panic_prevent_reenter() {
     use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -17,7 +31,7 @@ fn panic_prevent_reenter() {
         return;
     }
 
-    cpu::wait_forever()
+    _panic_exit()
 }
 
 #[panic_handler]
@@ -29,6 +43,7 @@ fn panic(info: &PanicInfo) -> ! {
         _ => ("?", 0, 0),
     };
 
+    #[cfg(not(test))]
     println!(
         "Kernel Panic!\n\nPanic localtion:\n  File '{}', line {}, column {}\n\n {}",
         location,
@@ -37,5 +52,5 @@ fn panic(info: &PanicInfo) -> ! {
         info.message().unwrap_or(&format_args!(""))
     );
 
-    cpu::wait_forever()
+    _panic_exit()
 }

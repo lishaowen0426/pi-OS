@@ -28,17 +28,14 @@ pub fn init_debug_console() {
     }
 }
 
-#[cfg(feature = "bsp_rpi3")]
 pub struct QemuConsole;
 
-#[cfg(feature = "bsp_rpi3")]
 impl QemuConsole {
     pub const fn new() -> Self {
         Self {}
     }
 }
 
-#[cfg(feature = "bsp_rpi3")]
 impl core::fmt::Write for QemuConsole {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for c in s.chars() {
@@ -50,7 +47,6 @@ impl core::fmt::Write for QemuConsole {
     }
 }
 
-#[cfg(feature = "bsp_rpi3")]
 pub static mut QEMU_CONSOLE: QemuConsole = QemuConsole::new();
 
 #[inline(always)]

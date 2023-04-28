@@ -1,4 +1,3 @@
-#[cfg(feature = "bsp_rpi3")]
 use crate::console::QEMU_CONSOLE;
 
 use crate::console::{CONSOLE, DEBUG_CONSOLE};
@@ -15,7 +14,6 @@ pub fn _print_debug(args: fmt::Arguments) {
     }
 }
 
-#[cfg(feature = "bsp_rpi3")]
 pub fn _print_qemu(args: fmt::Arguments) {
     use core::fmt::Write;
     unsafe {
@@ -44,7 +42,6 @@ macro_rules! println_debug {
     })
 }
 
-#[cfg(feature = "bsp_rpi3")]
 #[macro_export]
 macro_rules! println_qemu {
     () => ($crate::print::_print_qemu("\n"));

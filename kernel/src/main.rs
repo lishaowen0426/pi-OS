@@ -13,28 +13,12 @@
 #![no_std]
 #![allow(dead_code)]
 
-mod bsp;
-mod console;
-mod cpu;
-mod driver;
-mod errno;
-mod exception;
-mod macros;
-mod memory;
-mod panic_wait;
-mod print;
-mod synchronization;
+use libkernel::{console, exception, memory, println};
 
-unsafe fn kernel_init() -> ! {
-    #[cfg(feature = "bsp_rpi3")]
-    println_qemu!("I am qemu!");
-
+#[no_mangle]
+unsafe fn kernel_main() -> ! {
     console::init_console();
 
-    kernel_main()
-}
-
-fn kernel_main() -> ! {
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 
