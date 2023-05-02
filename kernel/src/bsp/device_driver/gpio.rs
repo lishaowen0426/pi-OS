@@ -1,6 +1,5 @@
 use crate::{
-    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver,
-    synchronization::Spinlock,
+    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver, synchronization::Spinlock,
 };
 
 use tock_registers::{
@@ -133,6 +132,7 @@ impl GPIOInner {
 
     /// Disable pull-up/down on pins 14 and 15.
     #[cfg(feature = "bsp_rpi4")]
+    #[allow(dead_code)]
     fn disable_pud_14_15(&mut self) {
         self.registers.GPIO_PUP_PDN_CNTRL_REG0.write(
             GPIO_PUP_PDN_CNTRL_REG0::GPIO_PUP_PDN_CNTRL15::PullUp

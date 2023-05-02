@@ -2,7 +2,7 @@
 name = "pi-os"
 version = "0.1.0"
 authors = ["Li Shaowen"]
-edition = "2023"
+edition = "2021"
 
 [profile.release]
 lto = true
@@ -23,6 +23,7 @@ test = false
 name = "libkernel"
 path = "src/lib.rs"
 test = true
+crate-type = ["staticlib"]
 
 
 

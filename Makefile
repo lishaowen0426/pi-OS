@@ -41,9 +41,13 @@ ifeq ($(BSP),rpi3)
     OBJDUMP_BINARY    = aarch64-none-elf-objdump
     NM_BINARY         = aarch64-none-elf-nm
     READELF_BINARY    = aarch64-none-elf-readelf
+	AS_BINARY         = aarch64-none-elf-as
+	ASM_SEARCH_PATH   = $(shell pwd)/kernel/src/_arch/aarch64/cpu
+	AS_ARGS           = -mcpu=cortex-a53 -I $(ASM_SEARCH_PATH)
+	LD_BINARY         = aarch64-none-elf-ld
     OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi3.cfg
     JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi3.img
-    LD_SCRIPT_PATH    = $(shell pwd)/kernel/src/bsp/raspberrypi
+    LD_SCRIPT_PATH    = ./kernel/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a53
 else ifeq ($(BSP),rpi4)
     TARGET            = aarch64-unknown-none-softfloat
@@ -55,6 +59,10 @@ else ifeq ($(BSP),rpi4)
     OBJDUMP_BINARY    = aarch64-none-elf-objdump
     NM_BINARY         = aarch64-none-elf-nm
     READELF_BINARY    = aarch64-none-elf-readelf
+	AS_BINARY         = aarch64-none-elf-as
+	ASM_SEARCH_PATH   = ./kernel/src/_arch/aarch64/cpu
+	AS_ARGS           = -mcpu=cortex-a72 -I $(ASM_SEARCH_PATH)
+	LD_BINARY         = aarch64-none-elf-ld
     OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi4.cfg
     JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi4.img
     LD_SCRIPT_PATH    = $(shell pwd)/kernel/src/bsp/raspberrypi
@@ -64,6 +72,10 @@ endif
 # Export for build.rs.
 export LD_SCRIPT_PATH
 
+BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/gas-boot.s
+KERNEL_STATIC_LIB = ./output-lib/aarch64-unknown-none-softfloat/release/liblibkernel.a
+ASSEMBLED_BOOT = ./output-lib/aarch64-unknown-none-softfloat/release/boot.o
+
 
 
 ##--------------------------------------------------------------------------------------------------
@@ -71,6 +83,7 @@ export LD_SCRIPT_PATH
 ##--------------------------------------------------------------------------------------------------
 KERNEL_MANIFEST      = kernel/Cargo.toml
 KERNEL_LINKER_SCRIPT = kernel.ld
+KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
 KERNEL_ELF      = target/$(TARGET)/release/kernel
@@ -102,6 +115,7 @@ RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir
     
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
+RUSTC_LIB_CMD = cargo rustc $(COMPILER_ARGS) --lib --manifest-path $(KERNEL_MANIFEST) --target-dir output-lib
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -296,3 +310,22 @@ test_unit:
 	$(call test_prepare)
 	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) --lib
 
+asm: 
+	$(call color_header, "Assemble boot.s")
+	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
+
+read_asm: 
+	$(call color_header, "Read boot.o")
+	@$(DOCKER_TOOLS) $(READELF_BINARY) -a $(ASSEMBLED_BOOT)
+
+lib: 
+	$(call color_header, "Compiling kernel static lib - $(BSP)")
+	@$(RUSTC_LIB_CMD)
+
+readlibelf: lib
+	$(call color_header, "Launching readelf")
+	@$(DOCKER_TOOLS) $(READELF_BINARY) --syms $(KERNEL_STATIC_LIB) 
+
+ls: 
+	$(call color_header, "Assemble boot.s")
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(KERNEL_LINKER_SCRIPT_PATH) -n $(ASSEMBLED_BOOT) $(KERNEL_STATIC_LIB) 

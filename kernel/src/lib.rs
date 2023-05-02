@@ -2,6 +2,7 @@
 #![allow(incomplete_features)]
 #![feature(asm_const)]
 #![feature(const_option)]
+#![feature(associated_type_defaults)]
 #![feature(core_intrinsics)]
 #![feature(format_args_nl)]
 #![feature(int_roundings)]
@@ -32,10 +33,24 @@ pub mod exception;
 pub mod macros;
 pub mod memory;
 pub mod print;
+pub mod utils;
 
 #[cfg(not(test))]
+/*
 extern "Rust" {
     fn kernel_main() -> !;
+}
+*/
+#[no_mangle]
+unsafe fn kernel_main() -> ! {
+    console::init_console();
+
+    let (_, el) = exception::current_privilege_level();
+    println!("Current privilege level: {}", el);
+
+    memory::MMU.config_tcr_el1().unwrap();
+
+    loop {}
 }
 
 #[cfg(test)]

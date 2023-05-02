@@ -1,1 +1,1 @@
-DOCKER_IMAGE := pi-os:0.1
+DOCKER_IMAGE := rustembedded/osdev-utils:2021.12

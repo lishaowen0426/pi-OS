@@ -16,11 +16,11 @@ use core::arch::global_asm;
 use aarch64_cpu::{asm, registers::*};
 use tock_registers::interfaces::Writeable;
 // Assembly counterpart to this file.
-global_asm!(
-    include_str!("boot.s"),
-    CONST_CORE_ID_MASK = const 0b11 ,
-    CONST_EL2 = const 0b1000,
-);
+// global_asm!(
+// include_str!("boot.s"),
+// CONST_CORE_ID_MASK = const 0b11 ,
+// CONST_EL2 = const 0b1000,
+// );
 
 #[inline(always)]
 unsafe fn prepare_el2_to_el1(phys_boot_core_stack_end_exclusive_addr: u64) {

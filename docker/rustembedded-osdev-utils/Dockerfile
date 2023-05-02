@@ -41,14 +41,13 @@ RUN set -ex;                                      \
         python3                                   \
         ruby                                      \
         ruby-dev                                  \
+        binutils                                  \
     ;                                             \
     # GCC AArch64 tools
     if [ "$(uname -m)" = "aarch64" ]; then wget ${GCC_AARCH64}; else wget ${GCC_X86_64}; fi; \
     tar -xf gcc-arm-10*;                                                                     \
     cp                                                                                       \
-        gcc-arm-10*/bin/aarch64-none-elf-objdump                                             \
-        gcc-arm-10*/bin/aarch64-none-elf-readelf                                             \
-        gcc-arm-10*/bin/aarch64-none-elf-nm                                                  \
+        gcc-arm-10*/bin/*                                                                       \
         /usr/local/bin/;                                                                     \
     rm -rf gcc-arm-10*;                                                                      \
     # Ruby dependencies
@@ -92,6 +91,7 @@ ENV LANG=en_US.UTF-8   \
 # Openocd
 COPY rpi3.cfg /openocd/
 COPY rpi4.cfg /openocd/
+COPY c232hm-ddhsl-0.cfg /openocd 
 
 # GDB
 COPY auto /root/.gdbinit.d/auto
