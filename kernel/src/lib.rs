@@ -36,13 +36,12 @@ pub mod print;
 pub mod utils;
 
 #[cfg(not(test))]
-/*
-extern "Rust" {
-    fn kernel_main() -> !;
-}
-*/
+// extern "Rust" {
+// fn kernel_main() -> !;
+// }
 #[no_mangle]
 unsafe fn kernel_main() -> ! {
+    println_qemu!("hello qemu");
     console::init_console();
 
     let (_, el) = exception::current_privilege_level();

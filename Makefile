@@ -30,51 +30,43 @@ endif
 ## BSP-specific configuration values
 ##--------------------------------------------------------------------------------------------------
 QEMU_MISSING_STRING = "This board is not yet supported for QEMU."
+TARGET            = aarch64-unknown-none-softfloat
+KERNEL_BIN        = kernel8.img
+QEMU_BINARY       = qemu-system-aarch64
+QEMU_MACHINE_TYPE = raspi3b
+QEMU_RELEASE_ARGS = -serial stdio -display none -machine $(QEMU_MACHINE_TYPE) 
+QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
+OBJDUMP_BINARY    = aarch64-none-elf-objdump
+NM_BINARY         = aarch64-none-elf-nm
+READELF_BINARY    = aarch64-none-elf-readelf
+AS_BINARY         = aarch64-none-elf-as
+LD_BINARY         = aarch64-none-elf-ld
+ASM_SEARCH_PATH   = ./kernel/src/_arch/aarch64/cpu
+
+KERNEL_LINKER_SCRIPT = kernel.ld
+LD_SCRIPT_PATH    = ./kernel/src/bsp/raspberrypi/$(KERNEL_LINKER_SCRIPT)
+LD_SCRIPT_FOLDER    = $(shell pwd)/kernel/src/bsp/raspberrypi/
 
 ifeq ($(BSP),rpi3)
-    TARGET            = aarch64-unknown-none-softfloat
-    KERNEL_BIN        = kernel8.img
-    QEMU_BINARY       = qemu-system-aarch64
-    QEMU_MACHINE_TYPE = raspi3b
-    QEMU_RELEASE_ARGS = -serial stdio -display none
-	QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
-    OBJDUMP_BINARY    = aarch64-none-elf-objdump
-    NM_BINARY         = aarch64-none-elf-nm
-    READELF_BINARY    = aarch64-none-elf-readelf
-	AS_BINARY         = aarch64-none-elf-as
-	ASM_SEARCH_PATH   = $(shell pwd)/kernel/src/_arch/aarch64/cpu
 	AS_ARGS           = -mcpu=cortex-a53 -I $(ASM_SEARCH_PATH)
-	LD_BINARY         = aarch64-none-elf-ld
     OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi3.cfg
     JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi3.img
-    LD_SCRIPT_PATH    = ./kernel/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a53
 else ifeq ($(BSP),rpi4)
-    TARGET            = aarch64-unknown-none-softfloat
-    KERNEL_BIN        = kernel8.img
-    QEMU_BINARY       = qemu-system-aarch64
-    QEMU_MACHINE_TYPE = raspi3b #qemu does not support pi4 yet
-    QEMU_RELEASE_ARGS = -serial stdio -display none
-	QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
-    OBJDUMP_BINARY    = aarch64-none-elf-objdump
-    NM_BINARY         = aarch64-none-elf-nm
-    READELF_BINARY    = aarch64-none-elf-readelf
-	AS_BINARY         = aarch64-none-elf-as
-	ASM_SEARCH_PATH   = ./kernel/src/_arch/aarch64/cpu
 	AS_ARGS           = -mcpu=cortex-a72 -I $(ASM_SEARCH_PATH)
-	LD_BINARY         = aarch64-none-elf-ld
     OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi4.cfg
     JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi4.img
-    LD_SCRIPT_PATH    = $(shell pwd)/kernel/src/bsp/raspberrypi
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a72
 endif
 
 # Export for build.rs.
-export LD_SCRIPT_PATH
+export LD_SCRIPT_FOLDER
 
-BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/gas-boot.s
-KERNEL_STATIC_LIB = ./output-lib/aarch64-unknown-none-softfloat/release/liblibkernel.a
-ASSEMBLED_BOOT = ./output-lib/aarch64-unknown-none-softfloat/release/boot.o
+BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/boot.s
+ASSEMBLED_BOOT = ./target/$(TARGET)/release/boot.o
+
+KERNEL_LIB = ./target/$(TARGET)/release/liblibkernel.a
+KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
 
 
 
@@ -82,7 +74,6 @@ ASSEMBLED_BOOT = ./output-lib/aarch64-unknown-none-softfloat/release/boot.o
 ## Targets and Prerequisites
 ##--------------------------------------------------------------------------------------------------
 KERNEL_MANIFEST      = kernel/Cargo.toml
-KERNEL_LINKER_SCRIPT = kernel.ld
 KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
@@ -115,7 +106,7 @@ RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir
     
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
-RUSTC_LIB_CMD = cargo rustc $(COMPILER_ARGS) --lib --manifest-path $(KERNEL_MANIFEST) --target-dir output-lib
+RUSTC_LIB_CMD = cargo rustc $(COMPILER_ARGS) --lib --manifest-path $(KERNEL_MANIFEST) 
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -126,6 +117,7 @@ OBJCOPY_CMD = rust-objcopy \
 EXEC_QEMU = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
 EXEC_TEST_DISPATCH = rudy common/tests/dispatch.rb
 EXEC_MINITERM      = ruby common/serial/miniterm.rb
+EXEC_MINIPUSH      = ruby ./common/serial/minipush.rb
 
 ##------------------------------------------------------------------------------
 ## Dockerization
@@ -172,23 +164,7 @@ $(LAST_BUILD_CONFIG):
 	@mkdir -p target
 	@touch $(LAST_BUILD_CONFIG)
 
-##------------------------------------------------------------------------------
-## Compile the kernel ELF
-##------------------------------------------------------------------------------
-$(KERNEL_ELF): $(KERNEL_ELF_DEPS)
-	$(call color_header, "Compiling kernel ELF - $(BSP)")
-	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(RUSTC_CMD)
 
-##------------------------------------------------------------------------------
-## Generate the stripped kernel binary
-##------------------------------------------------------------------------------
-$(KERNEL_BIN): $(KERNEL_ELF)
-	$(call color_header, "Generating stripped binary")
-	@$(OBJCOPY_CMD) $(KERNEL_ELF) $(KERNEL_BIN)
-	$(call color_progress_prefix, "Name")
-	@echo $(KERNEL_BIN)
-	$(call color_progress_prefix, "Size")
-	$(call disk_usage_KiB, $(KERNEL_BIN))
 
 ##------------------------------------------------------------------------------
 ## Generate the documentation
@@ -251,7 +227,7 @@ readelf: $(KERNEL_ELF)
 
 objdump: $(KERNEL_ELF)
 	$(call color_header, "Launching objdump")
-	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) -x $(KERNEL_ELF) | rustfilt
+	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) -d $(KERNEL_ELF) | rustfilt | less
 ##------------------------------------------------------------------------------
 ## Run nm
 ##------------------------------------------------------------------------------
@@ -266,7 +242,7 @@ mir: ${KERNEL_ELF_DEPS}
 
 
 chainboot : $(KERNEL_BIN)
-	$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
+	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
 
 gdb: $(KERNEL_ELF)
@@ -310,22 +286,25 @@ test_unit:
 	$(call test_prepare)
 	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) --lib
 
-asm: 
-	$(call color_header, "Assemble boot.s")
-	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
 
-read_asm: 
-	$(call color_header, "Read boot.o")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) -a $(ASSEMBLED_BOOT)
 
-lib: 
+$(KERNEL_LIB): $(KERNEL_LIB_DEPS)
 	$(call color_header, "Compiling kernel static lib - $(BSP)")
 	@$(RUSTC_LIB_CMD)
 
-readlibelf: lib
-	$(call color_header, "Launching readelf")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) --syms $(KERNEL_STATIC_LIB) 
+$(ASSEMBLED_BOOT): $(BOOT_ASM)
+	$(call color_header, "Assembling boot.s")
+	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
 
-ls: 
-	$(call color_header, "Assemble boot.s")
-	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(KERNEL_LINKER_SCRIPT_PATH) -n $(ASSEMBLED_BOOT) $(KERNEL_STATIC_LIB) 
+
+$(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
+	$(call color_header, "Linking kernel ELF - $(BSP)")
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) 
+
+$(KERNEL_BIN): $(KERNEL_ELF)
+	$(call color_header, "Generating stripped binary")
+	@$(OBJCOPY_CMD) $(KERNEL_ELF) $(KERNEL_BIN)
+	$(call color_progress_prefix, "Name")
+	@echo $(KERNEL_BIN)
+	$(call color_progress_prefix, "Size")
+	$(call disk_usage_KiB, $(KERNEL_BIN))

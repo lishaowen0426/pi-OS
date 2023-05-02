@@ -1,12 +1,13 @@
 use std::{env, fs, process};
 
 fn main() {
-    let ld_script_path = match env::var("LD_SCRIPT_PATH") {
+    let ld_script_folder = match env::var("LD_SCRIPT_FOLDER") {
         Ok(var) => var,
         _ => process::exit(0),
     };
+    println!("folder {}", ld_script_folder);
 
-    let files = fs::read_dir(ld_script_path).unwrap();
+    let files = fs::read_dir(ld_script_folder).unwrap();
     files
         .filter_map(Result::ok)
         .filter(|d| {

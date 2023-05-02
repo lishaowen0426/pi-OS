@@ -93,6 +93,7 @@ EXEC_QEMU          = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
 EXEC_TEST_DISPATCH = ruby ./common/tests/dispatch.rb
 EXEC_MINIPUSH      = ruby ./common/serial/minipush.rb
 
+
 ##------------------------------------------------------------------------------
 ## Dockerization
 ##------------------------------------------------------------------------------
@@ -175,7 +176,7 @@ endif
 ## Push the kernel to the real HW target
 ##------------------------------------------------------------------------------
 chainboot: $(KERNEL_BIN)
-	@$(DOCKER_CHAINBOOT) $(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
+	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
 ##------------------------------------------------------------------------------
 ## Run clippy

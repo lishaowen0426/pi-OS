@@ -1,12 +1,6 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
-//
-// Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
-//--------------------------------------------------------------------------------------------------
-
-// Load a load-time address, i.e., pc-relative
-
-
+.include "defines.s"
+//load-time address, i.e., pc-relative
 .macro ADR_LOAD register, symbol
 	adrp	\register, \symbol
 	add	    \register, \register, #:lo12:\symbol
@@ -20,20 +14,18 @@
 	movk	\register, #:abs_g0_nc:\symbol
 .endm
 
-// Public Code
-//--------------------------------------------------------------------------------------------------
+
+
 .section .text._start
 
-//------------------------------------------------------------------------------
-// fn _start()
-//------------------------------------------------------------------------------
+
 _start:
     mrs         x0, CurrentEL
-    cmp         x0, {CONST_EL2}
+    cmp         x0, .L_CONST_EL2
     b.ne        .L_parking_loop
 
     mrs         x1, MPIDR_EL1
-    and         x1, x1, {CONST_CORE_ID_MASK}
+    and         x1, x1, .L_CONST_CORE_ID_MASK
     ldr         x2, BOOT_CORE_ID
     cmp         x1, x2
     b.ne        .L_parking_loop
@@ -72,4 +64,6 @@ _start:
 .size	_start, . - _start
 .type	_start, function
 .global	_start
+
+
 
