@@ -73,7 +73,7 @@ KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST)
 ##--------------------------------------------------------------------------------------------------
 ## Targets and Prerequisites
 ##--------------------------------------------------------------------------------------------------
-KERNEL_MANIFEST      = kernel/Cargo.toml
+KERNEL_MANIFEST      = $(shell pwd)/kernel/Cargo.toml
 KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
@@ -88,7 +88,7 @@ KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST)
 ## Command building blocks
 ##--------------------------------------------------------------------------------------------------
 RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
-    -C link-arg=--library-path=$(LD_SCRIPT_PATH) \
+    -C link-arg=--library-path=$(LD_SCRIPT_FOLDER) \
     -C link-arg=--script=$(KERNEL_LINKER_SCRIPT) \
 	--emit asm                                   \
 	-C opt-level=0                               \
@@ -100,13 +100,14 @@ RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
 FEATURES      = --features bsp_$(BSP)
 COMPILER_ARGS = --target=$(TARGET) \
     $(FEATURES)                    \
-	--release
+	--release                      \
+	--lib
 
 RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir 
     
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
-RUSTC_LIB_CMD = cargo rustc $(COMPILER_ARGS) --lib --manifest-path $(KERNEL_MANIFEST) 
+RUSTC_LIB_CMD = cargo rustc   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -151,7 +152,7 @@ endif
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm chainboot test_unit
+.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_LIB) 
 
 
 all: $(KERNEL_BIN)
@@ -187,7 +188,11 @@ qemu qemuasm:
 
 else # QEMU is supported.
 
-qemu: $(KERNEL_BIN)
+qemu: FEATURES := --features build_qemu
+
+qemu: qemu_exec
+
+qemu_exec: $(KERNEL_BIN)
 	$(call color_header, "Launching QEMU")
 	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN) 
 
@@ -213,21 +218,23 @@ clean:
 ##------------------------------------------------------------------------------
 readelf: $(KERNEL_ELF)
 	$(call color_header, "Launching readelf")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_ELF)
+	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_LIB) 
 
 ##------------------------------------------------------------------------------
 ## Run objdump
 ##------------------------------------------------------------------------------
-##objdump: $(KERNEL_ELF)
-##	$(call color_header, "Launching objdump")
-#	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) --disassemble --demangle \
-#                --section .text   \
-#                --section .rodata   \
-#                $(KERNEL_ELF) | rustfilt
-
 objdump: $(KERNEL_ELF)
 	$(call color_header, "Launching objdump")
-	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) -d $(KERNEL_ELF) | rustfilt | less
+	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) --disassemble --demangle \
+                --section .rodata   \
+                --section .bss   \
+                $(KERNEL_ELF) | rustfilt
+
+
+#objdump: $(KERNEL_ELF)
+#	$(call color_header, "Launching objdump")
+#	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) -d $(KERNEL_ELF) | rustfilt | less
+	
 ##------------------------------------------------------------------------------
 ## Run nm
 ##------------------------------------------------------------------------------
@@ -257,7 +264,7 @@ openocd:
 jtagboot:
 	@$(DOCKER_JTAGBOOT) $(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
-test_unit: FEATURES += --features test_build
+test_unit: FEATURES := --features test_build --features bsp_rpi3
 
 define KERNEL_TEST_RUNNER
 #!/usr/bin/env bash
@@ -284,13 +291,13 @@ endef
 test_unit:
 	$(call color_header, "Compiling unit test(s) - $(BSP)")
 	$(call test_prepare)
-	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) --lib
+	RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) 
 
 
 
-$(KERNEL_LIB): $(KERNEL_LIB_DEPS)
+$(KERNEL_LIB): $(KERNEL_ELF_DEPS) 
 	$(call color_header, "Compiling kernel static lib - $(BSP)")
-	@$(RUSTC_LIB_CMD)
+	$(RUSTC_LIB_CMD)
 
 $(ASSEMBLED_BOOT): $(BOOT_ASM)
 	$(call color_header, "Assembling boot.s")

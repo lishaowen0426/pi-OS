@@ -11,19 +11,25 @@
 //!
 //! crate::cpu::boot::arch_boot
 
+#[cfg(test)]
 use core::arch::global_asm;
 
 use aarch64_cpu::{asm, registers::*};
 use tock_registers::interfaces::Writeable;
 // Assembly counterpart to this file.
-// global_asm!(
-// include_str!("boot.s"),
-// CONST_CORE_ID_MASK = const 0b11 ,
-// CONST_EL2 = const 0b1000,
-// );
+#[cfg(test)]
+global_asm!(
+    include_str!("test-boot.s"),
+    CONST_CURRENTEL_EL2 = const 0x8,
+    CONST_CORE_ID_MASK = const 0b11
+);
+
+extern "C" {
+    static __boot_core_stack_end_exclusive: u8;
+}
 
 #[inline(always)]
-unsafe fn prepare_el2_to_el1(phys_boot_core_stack_end_exclusive_addr: u64) {
+unsafe fn prepare_el2_to_el1(page_table_addr: u64) {
     CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCEN::SET + CNTHCTL_EL2::EL1PCTEN::SET);
     CNTVOFF_EL2.set(0);
 
@@ -38,11 +44,13 @@ unsafe fn prepare_el2_to_el1(phys_boot_core_stack_end_exclusive_addr: u64) {
     );
 
     ELR_EL2.set(crate::kernel_main as *const () as u64);
-    SP_EL1.set(phys_boot_core_stack_end_exclusive_addr);
+    SP_EL1.set(&__boot_core_stack_end_exclusive as *const u8 as u64);
+    TTBR0_EL1.set_baddr(page_table_addr);
+
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _start_rust(phys_boot_core_stack_end_exclusive_addr: u64) -> ! {
-    prepare_el2_to_el1(phys_boot_core_stack_end_exclusive_addr);
+pub unsafe extern "C" fn _start_rust(page_table_addr: u64) -> ! {
+    prepare_el2_to_el1(page_table_addr);
     asm::eret()
 }

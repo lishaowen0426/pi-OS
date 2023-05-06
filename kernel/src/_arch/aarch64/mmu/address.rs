@@ -1,93 +1,75 @@
-use crate::{
-    memory::{Granule, TGRAN4K},
-    utils::bitfields::Bitfields,
-};
-use core::marker::PhantomData;
+use super::config;
+use crate::utils::bitfields::Bitfields;
+use core::fmt;
 
-pub trait InputAddress {
-    type Input = u64;
-    type Output = u64;
-    fn get_level3(&self) -> Option<Self::Output>;
-    fn get_level2(&self) -> Option<Self::Output>;
-    fn get_level1(&self) -> Option<Self::Output>;
-    fn get_level0(&self) -> Option<Self::Output>;
-    fn get_offset(&self) -> Option<Self::Output>;
+macro_rules! declare_address {
+    ($name:ident, $tt:ty, $lit: literal $(,)?) => {
+        #[derive(Default, Eq, PartialEq, Debug)]
+        #[repr(transparent)]
+        pub struct $name($tt);
 
-    fn set_level3(&mut self, v: Self::Input) -> Option<Self::Output>;
-    fn set_level2(&mut self, v: Self::Input) -> Option<Self::Output>;
-    fn set_level1(&mut self, v: Self::Input) -> Option<Self::Output>;
-    fn set_level0(&mut self, v: Self::Input) -> Option<Self::Output>;
-    fn set_offset(&mut self, v: Self::Input) -> Option<Self::Output>;
+        impl From<$tt> for $name {
+            fn from(v: $tt) -> Self {
+                Self(v)
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, $lit, self.0)
+            }
+        }
+    };
 }
 
-#[derive(Eq, PartialEq, Debug)]
-#[repr(transparent)]
-pub struct VA<G: Granule>(u64, PhantomData<G>);
+declare_address!(VirtualAddress, usize, "{:#018x}");
+declare_address!(PhysicalAddress, usize, "{:#018x}");
+declare_address!(PageNumber, usize, "{}");
+declare_address!(FrameNumber, usize, "{}");
 
-impl<G: Granule> From<u64> for VA<G> {
-    fn from(addr: u64) -> Self {
-        Self(addr, PhantomData)
+impl VirtualAddress {
+    pub fn level1(&self) -> usize {
+        (self.0 >> config::L1_INDEX_SHIFT) & config::INDEX_MASK
+    }
+    pub fn level2(&self) -> usize {
+        (self.0 >> config::L2_INDEX_SHIFT) & config::INDEX_MASK
+    }
+    pub fn level3(&self) -> usize {
+        (self.0 >> config::L3_INDEX_SHIFT) & config::INDEX_MASK
+    }
+    pub fn offset(&self) -> usize {
+        (self.0 >> config::OFFSET_SHIFT) & config::OFFSET_MASK
+    }
+
+    pub fn set_level1(&self, idx: usize) -> Self {
+        let mut addr = self.0;
+        addr.set_bits(config::L1_RANGE, idx);
+        Self(addr)
+    }
+    pub fn set_level2(&self, idx: usize) -> Self {
+        let mut addr = self.0;
+        addr.set_bits(config::L2_RANGE, idx);
+        Self(addr)
+    }
+    pub fn set_level3(&self, idx: usize) -> Self {
+        let mut addr = self.0;
+        addr.set_bits(config::L3_RANGE, idx);
+        Self(addr)
+    }
+    pub fn set_offset(&self, idx: usize) -> Self {
+        let mut addr = self.0;
+        addr.set_bits(config::OFFSET_RANGE, idx);
+        Self(addr)
+    }
+
+    pub fn containing_page_number(&self) -> PageNumber {
+        PageNumber::from(self.0 >> config::OFFSET_BITS)
     }
 }
 
-pub type VA4K = VA<TGRAN4K>;
-
-impl InputAddress for VA4K {
-    fn get_level0(&self) -> Option<Self::Output> {
-        Some(self.0.get_bits(TGRAN4K::LEVEL0))
-    }
-    fn get_level1(&self) -> Option<Self::Output> {
-        Some(self.0.get_bits(TGRAN4K::LEVEL1))
-    }
-    fn get_level2(&self) -> Option<Self::Output> {
-        Some(self.0.get_bits(TGRAN4K::LEVEL2))
-    }
-    fn get_level3(&self) -> Option<Self::Output> {
-        Some(self.0.get_bits(TGRAN4K::LEVEL3))
-    }
-    fn get_offset(&self) -> Option<Self::Output> {
-        Some(self.0.get_bits(TGRAN4K::OFFSET))
-    }
-
-    fn set_level0(&mut self, v: Self::Input) -> Option<Self::Output> {
-        if (v & TGRAN4K::LEVEL_MASK) != v {
-            return None;
-        }
-
-        self.0.set_bits(TGRAN4K::LEVEL0, v);
-        Some(self.0)
-    }
-    fn set_level1(&mut self, v: Self::Input) -> Option<Self::Output> {
-        if (v & TGRAN4K::LEVEL_MASK) != v {
-            return None;
-        }
-
-        self.0.set_bits(TGRAN4K::LEVEL1, v);
-        Some(self.0)
-    }
-    fn set_level2(&mut self, v: Self::Input) -> Option<Self::Output> {
-        if (v & TGRAN4K::LEVEL_MASK) != v {
-            return None;
-        }
-
-        self.0.set_bits(TGRAN4K::LEVEL2, v);
-        Some(self.0)
-    }
-    fn set_level3(&mut self, v: Self::Input) -> Option<Self::Output> {
-        if (v & TGRAN4K::LEVEL_MASK) != v {
-            return None;
-        }
-
-        self.0.set_bits(TGRAN4K::LEVEL3, v);
-        Some(self.0)
-    }
-    fn set_offset(&mut self, v: Self::Input) -> Option<Self::Output> {
-        if (v & TGRAN4K::OFFSET_MASK) != v {
-            return None;
-        }
-
-        self.0.set_bits(TGRAN4K::OFFSET, v);
-        Some(self.0)
+impl PhysicalAddress {
+    pub fn containing_frame_number(&self) -> FrameNumber {
+        FrameNumber::from(self.0 >> config::OFFSET_BITS)
     }
 }
 
@@ -95,60 +77,77 @@ impl InputAddress for VA4K {
 mod tests {
     use super::*;
     #[allow(unused_imports)]
-    use crate::println_qemu;
     use test_macros::kernel_test;
 
     #[kernel_test]
     fn test_input_address_index() {
         {
-            let va0: VA4K =
-                VA::from(0b0000000000000000_000100100_011010001_010110011_110001001_101010111100);
-            assert!(va0.get_offset().unwrap() == 0b101010111100);
-            assert!(va0.get_level3().unwrap() == 0b110001001);
-            assert!(va0.get_level2().unwrap() == 0b010110011);
-            assert!(va0.get_level1().unwrap() == 0b011010001);
-            assert!(va0.get_level0().unwrap() == 0b000100100);
+            let va0: VirtualAddress = VirtualAddress::from(
+                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100,
+            );
+            assert!(va0.offset() == 0b101010111100);
+            assert!(va0.level3() == 0b110001001);
+            assert!(va0.level2() == 0b010110011);
+            assert!(va0.level1() == 0b011010001);
         }
 
         {
-            let mut va0: VA4K =
-                VA::from(0b0000000000000000_000100100_011010001_010110011_110001001_101010111100);
+            let va0: VirtualAddress = VirtualAddress::from(
+                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100,
+            );
             assert_eq!(
-                va0.set_offset(0b010101000011).unwrap(),
-                0b0000000000000000_000100100_011010001_010110011_110001001_010101000011
+                va0.set_offset(0b010101000011),
+                VirtualAddress::from(
+                    0b0000000000000000_000100100_011010001_010110011_110001001_010101000011
+                )
             );
         }
         {
-            let mut va0: VA4K =
-                VA::from(0b0000000000000000_000100100_011010001_010110011_110001001_101010111100);
+            let va0: VirtualAddress = VirtualAddress::from(
+                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100,
+            );
             assert_eq!(
-                va0.set_level3(0b011100101).unwrap(),
-                0b0000000000000000_000100100_011010001_010110011_011100101_101010111100
+                va0.set_level3(0b011100101),
+                VirtualAddress::from(
+                    0b0000000000000000_000100100_011010001_010110011_011100101_101010111100
+                )
             );
         }
         {
-            let mut va0: VA4K =
-                VA::from(0b0000000000000000_000100100_011010001_010110011_110001001_101010111100);
+            let va0: VirtualAddress = VirtualAddress::from(
+                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100,
+            );
             assert_eq!(
-                va0.set_level2(0b011100101).unwrap(),
-                0b0000000000000000_000100100_011010001_011100101_110001001_101010111100
+                va0.set_level2(0b011100101),
+                VirtualAddress::from(
+                    0b0000000000000000_000100100_011010001_011100101_110001001_101010111100
+                )
             );
         }
         {
-            let mut va0: VA4K =
-                VA::from(0b0000000000000000_000100100_011010001_010110011_110001001_101010111100);
+            let va0: VirtualAddress = VirtualAddress::from(VirtualAddress::from(
+                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100,
+            ));
             assert_eq!(
-                va0.set_level1(0b011100101).unwrap(),
-                0b0000000000000000_000100100_011100101_010110011_110001001_101010111100
+                va0.set_level1(0b011100101),
+                VirtualAddress::from(
+                    0b0000000000000000_000100100_011100101_010110011_110001001_101010111100
+                )
             );
         }
         {
-            let mut va0: VA4K =
-                VA::from(0b0000000000000000_000100100_011010001_010110011_110001001_101010111100);
+            let va0: VirtualAddress = VirtualAddress::from(VirtualAddress::from(
+                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100,
+            ));
             assert_eq!(
-                va0.set_level0(0b011100101).unwrap(),
-                0b0000000000000000_011100101_011010001_010110011_110001001_101010111100
+                va0.containing_page_number(),
+                PageNumber::from(0b0000000000000000_000100100_011010001_010110011_110001001)
             );
+        }
+        {
+            let last_frame = (0xFFFF_FFFF + 1) / 4096 - 1;
+            let pa: PhysicalAddress = PhysicalAddress::from(0xFFFF_FFFF);
+            assert_eq!(pa.containing_frame_number(), FrameNumber::from(last_frame));
         }
     }
 }

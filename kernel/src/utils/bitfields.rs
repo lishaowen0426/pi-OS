@@ -1,30 +1,65 @@
+use crate::println;
 use core::ops::Range;
 
-pub trait Bitfields {
-    type Output;
+pub trait Bitfields
+where
+    Self: Sized,
+{
+    type Output = Self;
+
     fn get_bit(&self, index: usize) -> Self::Output;
     fn get_bits(&self, range: Range<usize>) -> Self::Output;
-    fn set_bit(&mut self, index: usize, val: u64);
-    fn set_bits(&mut self, range: Range<usize>, val: u64);
+
+    fn set_bit(&mut self, index: usize, val: Self);
+    fn set_bits(&mut self, range: Range<usize>, val: Self);
 }
 
 impl Bitfields for u64 {
-    type Output = u64;
     fn get_bit(&self, index: usize) -> Self::Output {
-        (self >> index) & 0b1
+        (*self >> index) & 0b1
     }
     fn get_bits(&self, range: Range<usize>) -> Self::Output {
         let mask = (1 << (range.end - range.start)) - 1;
-        (self >> range.start) & mask
+        (*self >> range.start) & mask
     }
-    fn set_bit(&mut self, index: usize, val: u64) {
+    fn set_bit(&mut self, index: usize, val: Self) {
+        let origin = *self;
+        let mut higher: u64 = 0;
+        if index < 63 {
+            higher = (origin >> (index + 1)) << (index + 1);
+        }
+        let lower = origin & ((1 << index) - 1);
+        let set = (val & 0b1) << index;
+        *self = higher | set | lower;
+    }
+    fn set_bits(&mut self, range: Range<usize>, val: Self) {
+        let origin = *self;
+        let mut higher: u64 = 0;
+        if range.end < 64 {
+            higher = (origin >> range.end) << range.end;
+        }
+        let lower = origin & ((1 << range.start) - 1);
+        let mask = (1 << (range.end - range.start)) - 1;
+        let set = (val & mask) << range.start;
+        *self = higher | set | lower;
+    }
+}
+impl Bitfields for usize {
+    fn get_bit(&self, index: usize) -> Self::Output {
+        (*self >> index) & 0b1
+    }
+    fn get_bits(&self, range: Range<usize>) -> Self::Output {
+        let mask = (1 << (range.end - range.start)) - 1;
+        (*self >> range.start) & mask
+    }
+    fn set_bit(&mut self, index: usize, val: Self) {
         let origin = *self;
         let higher = (origin >> (index + 1)) << (index + 1);
         let lower = origin & ((1 << index) - 1);
         let set = (val & 0b1) << index;
         *self = higher | set | lower;
     }
-    fn set_bits(&mut self, range: Range<usize>, val: u64) {
+    fn set_bits(&mut self, range: Range<usize>, val: Self) {
         let origin = *self;
         let higher = (origin >> range.end) << range.end;
         let lower = origin & ((1 << range.start) - 1);
@@ -38,7 +73,6 @@ impl Bitfields for u64 {
 mod tests {
     use super::*;
     #[allow(unused_imports)]
-    use crate::println_qemu;
     use test_macros::kernel_test;
     #[kernel_test]
     fn test_bitfields() {

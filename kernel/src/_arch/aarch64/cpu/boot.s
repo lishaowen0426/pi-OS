@@ -1,6 +1,6 @@
 
 .include "defines.s"
-//load-time address, i.e., pc-relative
+/*load-time address, i.e., pc-relative*/
 .macro ADR_LOAD register, symbol
 	adrp	\register, \symbol
 	add	    \register, \register, #:lo12:\symbol
@@ -19,6 +19,7 @@
 .section .text._start
 
 
+.global	_start
 _start:
     mrs         x0, CurrentEL
     cmp         x0, .L_CONST_EL2
@@ -47,6 +48,7 @@ _start:
 
 
     // x0 holds the function argument to _start_rust
+    ADR_LOAD x0, l1_page_table
     b _start_rust
 
 
@@ -57,13 +59,12 @@ _start:
 	b	.L_parking_loop
 
 
-
-
-
-
 .size	_start, . - _start
 .type	_start, function
-.global	_start
 
 
-
+.section page_table
+.p2align 12 
+.global l1_page_table
+l1_page_table:
+    .space 4096, 0

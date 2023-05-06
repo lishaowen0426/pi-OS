@@ -23,11 +23,6 @@
 //! | .got                                  |
 //! |                                       |
 
-extern "C" {
-    static __code_start: u8;
-    static __code_end_exclusive: u8;
-}
-
 const GPIO_OFFSET: usize = 0x0020_0000;
 const UART_OFFSET: usize = 0x0020_1000;
 const MINI_UART_OFFSET: usize = 0x0021_5000;

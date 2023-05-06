@@ -12,7 +12,8 @@ lto = true
 default = []
 bsp_rpi3 = ["tock-registers"]
 bsp_rpi4 = ["tock-registers"]
-test_build = ["qemu-exit"]
+test_build = [ "build_qemu"]
+build_qemu = ["bsp_rpi3", "qemu-exit"]
 
 [[bin]]
 name = "kernel"
@@ -37,6 +38,7 @@ tock-registers = { version = "0.8.x", default-features = false, features = ["reg
 qemu-exit = { version = "3.x.x", optional = true }
 cfg-if = "1.0"
 test-types = {path = "../libraries/test-types"}
+zerocopy = "0.6.1"
 
 # Plaftform specific dependencies
 [target.'cfg(target_arch = "aarch64")'.dependencies]

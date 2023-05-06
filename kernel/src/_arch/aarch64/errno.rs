@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! errno_decl {
-    ($($ident:ident => $literal:literal), *) => {
+    ($($ident:ident => $literal:literal), * $(,)?) => {
         pub enum SysError{
             $($ident(u8,&'static str)),*
         }

@@ -4,6 +4,8 @@
 #![feature(const_option)]
 #![feature(associated_type_defaults)]
 #![feature(core_intrinsics)]
+#![feature(pointer_is_aligned)]
+#![feature(strict_provenance)]
 #![feature(format_args_nl)]
 #![feature(int_roundings)]
 #![feature(linkage)]
@@ -14,6 +16,7 @@
 #![feature(sync_unsafe_cell)]
 #![feature(error_in_core)]
 #![feature(macro_metavar_expr)]
+#![feature(const_pointer_is_aligned)]
 #![no_std]
 // Testing
 #![cfg_attr(test, no_main)]
@@ -35,17 +38,25 @@ pub mod memory;
 pub mod print;
 pub mod utils;
 
+use aarch64_cpu::registers::*;
+
+extern "C" {
+    static __boot_core_stack_end_exclusive: u8;
+}
+
 #[cfg(not(test))]
-// extern "Rust" {
-// fn kernel_main() -> !;
-// }
 #[no_mangle]
 unsafe fn kernel_main() -> ! {
-    println_qemu!("hello qemu");
+    #[cfg(not(feature = "build_qemu"))]
     console::init_console();
 
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
+    println!(
+        "boot stack: {:p}",
+        &__boot_core_stack_end_exclusive as *const u8
+    );
+    println!("page table: {:x}", TTBR0_EL1.get_baddr());
 
     memory::MMU.config_tcr_el1().unwrap();
 
@@ -54,12 +65,12 @@ unsafe fn kernel_main() -> ! {
 
 #[cfg(test)]
 fn test_runner(tests: &[&test_types::UnitTest]) {
-    println_qemu!("Running {} tests", tests.len());
+    println!("Running {} tests", tests.len());
     for (i, test) in tests.iter().enumerate() {
-        println_qemu!("{:>3}. {:.<58}", i + 1, test.name);
+        println!("{:>3}. {:.<58}", i + 1, test.name);
         (test.test_func)();
 
-        println_qemu!("[ok]");
+        println!("[ok]");
     }
 }
 

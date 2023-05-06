@@ -11,8 +11,13 @@ use tock_registers::interfaces::{Readable, Writeable};
 mod address;
 #[path = "mmu/translation_table.rs"]
 mod translation_table;
+#[path = "mmu/translation_entry.rs"]
+mod translation_entry;
+#[path = "mmu/config.rs"]
+mod mmu_config;
 
-// use translation_table::*;
+use mmu_config::config;
+
 #[derive(Default)]
 pub struct TGRAN4K;
 pub struct TGRAN16K;
@@ -22,6 +27,7 @@ pub trait Granule {
     const ENTRIES: usize;
     const BITS_RESOLVED: u8;
     const SHIFT: u8; // offset bits
+    const SIZE: usize = 1 << Self::SHIFT;
 
     const OFFSET_MASK: u64 = (1 << Self::SHIFT) - 1;
     const LEVEL_MASK: u64 = (1 << Self::BITS_RESOLVED) - 1;
@@ -105,7 +111,9 @@ impl MemoryManagementUnit {
     }
 
     pub fn config_tcr_el1(&self) -> Result<(), ErrorCode> {
-        let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; // currently just identity map
+        // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
+        // currently just identity map
+        let t0sz: u64 = 16 + 9; // start from level 1
 
         println!(
             "[MMU]: TTBR0: 0x0 - {:#x}",
@@ -121,7 +129,7 @@ impl MemoryManagementUnit {
         // Support physical memory up to 64GB
         TCR_EL1.write(
             TCR_EL1::IPS::Bits_32 /*pi4 has 4GB memory*/
-                + TCR_EL1::T0SZ.val(t0sz) /*T0 supports: 0x0000_0000 - 0xFFFF_FFFF, the initial look up is from level 1 */
+                + TCR_EL1::T0SZ.val(t0sz) 
                 + TCR_EL1::TBI0::Used
                 + TCR_EL1::A1::TTBR0
                 + TCR_EL1::TG0::KiB_4

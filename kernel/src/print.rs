@@ -26,6 +26,16 @@ macro_rules! print {
     ($($arg:tt)*) => ($crate::print::_print(format_args!($($arg)*)));
 }
 
+#[cfg(feature = "build_qemu")]
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print::_print_qemu("\n"));
+    ($($arg:tt)*) => ({
+        $crate::print::_print_qemu(format_args_nl!($($arg)*));
+    })
+}
+
+#[cfg(not(feature = "build_qemu"))]
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
@@ -39,13 +49,5 @@ macro_rules! println_debug {
     () => ($crate::print::_print_debug(format_args_nl!($($arg)*)));
     ($($arg:tt)*) => ({
         $crate::print::_print_debug(format_args_nl!($($arg)*));
-    })
-}
-
-#[macro_export]
-macro_rules! println_qemu {
-    () => ($crate::print::_print_qemu("\n"));
-    ($($arg:tt)*) => ({
-        $crate::print::_print_qemu(format_args_nl!($($arg)*));
     })
 }

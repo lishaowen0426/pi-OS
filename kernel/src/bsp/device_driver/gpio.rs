@@ -105,6 +105,7 @@ impl GPIOInner {
     }
 
     #[cfg(feature = "bsp_rpi3")]
+    #[allow(dead_code)]
     fn disable_pud_14_15(&mut self) {
         use crate::cpu;
 

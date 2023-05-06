@@ -6,5 +6,7 @@ use crate::errno_decl;
 
 errno_decl!(
     EINVAL => "Invalid argument",
-    EAGAIN => "Try again"
+    EAGAIN => "Try again",
+    EALIGN => "Address is not properly aligned",
+
 );
