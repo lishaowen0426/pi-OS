@@ -38,6 +38,7 @@ pub mod memory;
 pub mod print;
 pub mod utils;
 
+#[cfg(not(test))]
 use aarch64_cpu::registers::*;
 
 extern "C" {

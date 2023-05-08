@@ -70,7 +70,7 @@ SECTIONS
     {
         __bss_start = .;
         *(.bss*);
-        . = ALIGN(4K);
+        . = ALIGN(PAGE_SIZE);
         *(page_table);
         __bss_end_exclusive = .;
     }: segment_bss

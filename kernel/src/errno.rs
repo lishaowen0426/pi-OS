@@ -8,5 +8,5 @@ errno_decl!(
     EINVAL => "Invalid argument",
     EAGAIN => "Try again",
     EALIGN => "Address is not properly aligned",
-
+    EOVERFLOW => "Overflow",
 );

@@ -149,6 +149,19 @@ impl MemoryManagementUnit {
                 + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
         );
     }
+
+    pub fn config(&self) -> Result<(), ErrorCode>{
+        //config tcr
+        //config mair
+        //set up initial mapping
+        //
+        //barrier
+        // Enable the MMU and turn on data and instruction caching.
+        //SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
+        ////barrier
+
+        Ok(())
+    }
 }
 
 pub static MMU: MemoryManagementUnit = MemoryManagementUnit::new();

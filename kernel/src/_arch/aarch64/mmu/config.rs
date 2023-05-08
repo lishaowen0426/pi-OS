@@ -2,6 +2,22 @@
 #[allow(dead_code)]
 pub(super) mod config {
     use core::ops::Range;
+
+    pub const SHIFT_4K: usize = 12;
+    pub const MASK_4K: usize = (1 << SHIFT_4K) - 1;
+
+    pub const SHIFT_16K: usize = 14;
+    pub const MASK_16K: usize = (1 << SHIFT_16K) - 1;
+
+    pub const SHIFT_64K: usize = 16;
+    pub const MASK_64K: usize = (1 << SHIFT_64K) - 1;
+
+    pub const SHIFT_2M: usize = 21;
+    pub const MASK_2M: usize = (1 << SHIFT_2M) - 1;
+
+    pub const SHIFT_1G: usize = 30;
+    pub const MASK_1G: usize = (1 << SHIFT_1G) - 1;
+
     pub const OFFSET_BITS: usize = 12;
     pub const OFFSET_MASK: usize = (1 << OFFSET_BITS) - 1;
 
@@ -11,15 +27,15 @@ pub(super) mod config {
     pub const PAGE_SIZE: usize = 1 << OFFSET_BITS;
     pub const ENTRIES_PER_TABLE: usize = PAGE_SIZE / 8;
 
-    pub const OFFSET_SHIFT: usize = 0;
-    pub const L3_INDEX_SHIFT: usize = OFFSET_BITS;
-    pub const L2_INDEX_SHIFT: usize = OFFSET_BITS + INDEX_BITS;
-    pub const L1_INDEX_SHIFT: usize = OFFSET_BITS + 2 * INDEX_BITS;
-
     pub const OFFSET_RANGE: Range<usize> = 0..12;
     pub const L3_RANGE: Range<usize> = 12..21;
     pub const L2_RANGE: Range<usize> = 21..30;
     pub const L1_RANGE: Range<usize> = 30..39;
+
+    pub const OFFSET_SHIFT: usize = 0;
+    pub const L3_INDEX_SHIFT: usize = OFFSET_BITS;
+    pub const L2_INDEX_SHIFT: usize = OFFSET_BITS + INDEX_BITS;
+    pub const L1_INDEX_SHIFT: usize = OFFSET_BITS + 2 * INDEX_BITS;
 
     pub const RECURSIVE_L1_INDEX: usize = ENTRIES_PER_TABLE - 1;
     pub const L1_VIRTUAL_ADDR: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
