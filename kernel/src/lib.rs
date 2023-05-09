@@ -1,4 +1,5 @@
 #![allow(clippy::upper_case_acronyms)]
+#![allow(dead_code)]
 #![allow(incomplete_features)]
 #![feature(asm_const)]
 #![feature(const_option)]

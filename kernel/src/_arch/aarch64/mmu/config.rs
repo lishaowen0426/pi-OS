@@ -5,18 +5,23 @@ pub(super) mod config {
 
     pub const SHIFT_4K: usize = 12;
     pub const MASK_4K: usize = (1 << SHIFT_4K) - 1;
+    pub const ALIGN_4K: usize = !MASK_4K;
 
     pub const SHIFT_16K: usize = 14;
     pub const MASK_16K: usize = (1 << SHIFT_16K) - 1;
+    pub const ALIGN_16K: usize = !MASK_16K;
 
     pub const SHIFT_64K: usize = 16;
     pub const MASK_64K: usize = (1 << SHIFT_64K) - 1;
+    pub const ALIGN_64K: usize = !MASK_64K;
 
     pub const SHIFT_2M: usize = 21;
     pub const MASK_2M: usize = (1 << SHIFT_2M) - 1;
+    pub const ALIGN_2M: usize = !MASK_2M;
 
     pub const SHIFT_1G: usize = 30;
     pub const MASK_1G: usize = (1 << SHIFT_1G) - 1;
+    pub const ALIGN_1G: usize = !MASK_1G;
 
     pub const OFFSET_BITS: usize = 12;
     pub const OFFSET_MASK: usize = (1 << OFFSET_BITS) - 1;
@@ -38,7 +43,7 @@ pub(super) mod config {
     pub const L1_INDEX_SHIFT: usize = OFFSET_BITS + 2 * INDEX_BITS;
 
     pub const RECURSIVE_L1_INDEX: usize = ENTRIES_PER_TABLE - 1;
-    pub const L1_VIRTUAL_ADDR: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
+    pub const L1_VIRTUAL_ADDRESS: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L2_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L3_INDEX_SHIFT);
 }

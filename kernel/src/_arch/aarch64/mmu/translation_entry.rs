@@ -81,12 +81,12 @@ impl<'a, L> fmt::Display for BlockEntry<'a, L> {
 }
 impl<'a> fmt::Display for TableEntry<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TableEntry: {:#018x}", *self.entry)
+        write!(f, "\nNSTable = {:1}, APTable = {:#04b}, UXNTable = {:1}, PXNTable = {:1}\nTable Address = {:#018x}", self.get_NSTable(), self.get_APTable(), self.get_UXNTable(), self.get_PXNTable(), self.get_next_level_table_addr())
     }
 }
 impl<'a> fmt::Display for PageEntry<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\nUXN = {:1}, PXN = {:1}, Contiguous = {:1}, nG = {:1}, AF = {:1}, SH = {:#04b}, AP = {:#04b}, NS = {:1}, AttrIndx = {:#05b}\nPage address = {:#018x}\n",self.get_UXN(), self.get_PXN(), self.get_Contiguous(), self.get_nG(), self.get_AF(), self.get_SH(), self.get_AP(), self.get_NS(), self.get_AttrIdx(), self.get_output_addr())
+        write!(f, "\nUXN = {:1}, PXN = {:1}, Contiguous = {:1}, nG = {:1}, AF = {:1}, SH = {:#04b}, AP = {:#04b}, NS = {:1}, AttrIndx = {:#05b}\nPage address = {:#018x}",self.get_UXN(), self.get_PXN(), self.get_Contiguous(), self.get_nG(), self.get_AF(), self.get_SH(), self.get_AP(), self.get_NS(), self.get_AttrIdx(), self.get_output_addr())
     }
 }
 
@@ -190,10 +190,11 @@ impl<'a, L: TranslationTableLevel> BlockEntry<'a, L> {
 }
 impl<'a> BlockAddress for BlockEntry<'a, Level1> {
     fn set_output_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !pa.is_1G_aligned() {
+        if !AddressEdit::is_1G_aligned(pa.0) {
             Err(EALIGN)
         } else {
-            self.entry.set_bits(30..48, pa.shift_1G() as u64);
+            self.entry
+                .set_bits(30..48, AddressEdit::shift_1G(pa.0) as u64);
             Ok(())
         }
     }
@@ -204,10 +205,11 @@ impl<'a> BlockAddress for BlockEntry<'a, Level1> {
 }
 impl<'a> BlockAddress for BlockEntry<'a, Level2> {
     fn set_output_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !pa.is_2M_aligned() {
+        if !AddressEdit::is_2M_aligned(pa.0) {
             Err(EALIGN)
         } else {
-            self.entry.set_bits(21..48, pa.shift_2M() as u64);
+            self.entry
+                .set_bits(21..48, AddressEdit::shift_2M(pa.0) as u64);
             Ok(())
         }
     }
@@ -312,10 +314,11 @@ impl<'a> PageEntry<'a> {
     }
 
     pub fn set_output_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !pa.is_4K_aligned() {
+        if !AddressEdit::is_4K_aligned(pa.0) {
             Err(EALIGN)
         } else {
-            self.entry.set_bits(12..48, pa.shift_4K() as u64);
+            self.entry
+                .set_bits(12..48, AddressEdit::shift_4K(pa.0) as u64);
             Ok(())
         }
     }
@@ -365,10 +368,11 @@ impl<'a> TableEntry<'a> {
     }
 
     pub fn set_next_level_table_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !pa.is_4K_aligned() {
+        if !AddressEdit::is_4K_aligned(pa.0) {
             Err(EALIGN)
         } else {
-            self.entry.set_bits(12..48, pa.shift_4K() as u64);
+            self.entry
+                .set_bits(12..48, AddressEdit::shift_4K(pa.0) as u64);
             Ok(())
         }
     }
@@ -434,7 +438,6 @@ impl<L: TranslationTableLevel3> TranslationTableEntry<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::println;
     #[allow(unused_imports)]
     use test_macros::kernel_test;
 

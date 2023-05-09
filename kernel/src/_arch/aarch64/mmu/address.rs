@@ -3,27 +3,70 @@ use crate::{errno::*, utils::bitfields::Bitfields};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,
+    iter::Iterator,
+    ops::{Add, AddAssign, Sub, SubAssign},
 };
 
-#[allow(non_snake_case)]
-pub trait Address {
-    fn is_4K_aligned(&self) -> bool;
-    fn is_16K_aligned(&self) -> bool;
-    fn is_64K_aligned(&self) -> bool;
-    fn is_2M_aligned(&self) -> bool;
-    fn is_1G_aligned(&self) -> bool;
+#[allow(non_snake_case, dead_code)]
+pub mod AddressEdit {
+    use super::config;
 
-    fn shift_4K(&self) -> usize;
-    fn shift_16K(&self) -> usize;
-    fn shift_64K(&self) -> usize;
-    fn shift_2M(&self) -> usize;
-    fn shift_1G(&self) -> usize;
+    pub fn is_4K_aligned(addr: usize) -> bool {
+        (addr & config::ALIGN_4K) == addr
+    }
+    pub fn is_16K_aligned(addr: usize) -> bool {
+        (addr & config::ALIGN_16K) == addr
+    }
+    pub fn is_64K_aligned(addr: usize) -> bool {
+        (addr & config::ALIGN_64K) == addr
+    }
+    pub fn is_2M_aligned(addr: usize) -> bool {
+        (addr & config::ALIGN_2M) == addr
+    }
+    pub fn is_1G_aligned(addr: usize) -> bool {
+        (addr & config::ALIGN_1G) == addr
+    }
+    pub fn is_aligned_to(addr: usize, alignment: usize) -> bool {
+        (addr & (!(alignment - 1))) == addr
+    }
+
+    pub fn shift_4K(addr: usize) -> usize {
+        addr >> config::SHIFT_4K
+    }
+    pub fn shift_16K(addr: usize) -> usize {
+        addr >> config::SHIFT_16K
+    }
+    pub fn shift_64K(addr: usize) -> usize {
+        addr >> config::SHIFT_64K
+    }
+    pub fn shift_2M(addr: usize) -> usize {
+        addr >> config::SHIFT_2M
+    }
+    pub fn shift_1G(addr: usize) -> usize {
+        addr >> config::SHIFT_1G
+    }
+
+    pub fn align_to_4K(addr: usize) -> usize {
+        addr & config::ALIGN_4K
+    }
+    pub fn align_to_16K(addr: usize) -> usize {
+        addr & config::ALIGN_16K
+    }
+    pub fn align_to_64K(addr: usize) -> usize {
+        addr & config::ALIGN_64K
+    }
+    pub fn align_to_2M(addr: usize) -> usize {
+        addr & config::ALIGN_2M
+    }
+    pub fn align_to_1G(addr: usize) -> usize {
+        addr & config::ALIGN_1G
+    }
 }
 macro_rules! declare_address {
     ($name:ident, $tt:ty, $lit: literal $(,)?) => {
-        #[derive(Default, Eq, PartialEq, Debug, Clone, Copy)]
+        #[derive(Default, Eq, PartialEq, Ord, PartialOrd, Debug, Clone, Copy)]
         #[repr(transparent)]
-        pub struct $name($tt);
+        pub struct $name(pub $tt);
 
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -36,50 +79,27 @@ macro_rules! declare_address {
             }
         }
 
-        impl Address for $name {
-            fn is_4K_aligned(&self) -> bool {
-                (self.0 & !config::MASK_4K) == self.0
-            }
-            fn is_16K_aligned(&self) -> bool {
-                (self.0 & !config::MASK_16K) == self.0
-            }
-            fn is_64K_aligned(&self) -> bool {
-                (self.0 & !config::MASK_64K) == self.0
-            }
-            fn is_2M_aligned(&self) -> bool {
-                (self.0 & !config::MASK_2M) == self.0
-            }
-            fn is_1G_aligned(&self) -> bool {
-                (self.0 & !config::MASK_1G) == self.0
-            }
-
-            fn shift_4K(&self) -> usize {
-                self.0 >> config::SHIFT_4K
-            }
-            fn shift_16K(&self) -> usize {
-                self.0 >> config::SHIFT_16K
-            }
-            fn shift_64K(&self) -> usize {
-                self.0 >> config::SHIFT_64K
-            }
-            fn shift_2M(&self) -> usize {
-                self.0 >> config::SHIFT_2M
-            }
-            fn shift_1G(&self) -> usize {
-                self.0 >> config::SHIFT_1G
+        impl Add for $name {
+            type Output = Self;
+            fn add(self, other: Self) -> Self {
+                Self::try_from(self.0.checked_add(other.0).unwrap()).unwrap()
             }
         }
-    };
-}
-macro_rules! declare_number {
-    ($name:ident, $tt:ty,  $lit: literal $(,)?) => {
-        #[derive(Default, Eq, PartialEq, Debug, Clone, Copy)]
-        #[repr(transparent)]
-        pub struct $name($tt);
+        impl Sub for $name {
+            type Output = Self;
+            fn sub(self, other: Self) -> Self {
+                Self::try_from(self.0.checked_sub(other.0).unwrap()).unwrap()
+            }
+        }
 
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, $lit, self.0)
+        impl AddAssign for $name {
+            fn add_assign(&mut self, rhs: Self) {
+                self.0 = self.0.checked_add(rhs.0).unwrap();
+            }
+        }
+        impl SubAssign for $name {
+            fn sub_assign(&mut self, rhs: Self) {
+                self.0 = self.0.checked_sub(rhs.0).unwrap();
             }
         }
     };
@@ -87,8 +107,41 @@ macro_rules! declare_number {
 
 declare_address!(VirtualAddress, usize, "{:#018x}");
 declare_address!(PhysicalAddress, usize, "{:#018x}");
-declare_number!(PageNumber, usize, "{}");
-declare_number!(FrameNumber, usize, "{}");
+declare_address!(PageNumber, usize, "{}");
+declare_address!(FrameNumber, usize, "{}");
+
+// end is exclusive
+#[derive(Debug)]
+pub struct AddressIterator<T> {
+    current: T,
+    step: T,
+    end: T,
+}
+
+impl<T> AddressIterator<T>
+where
+    T: Copy,
+{
+    fn new(current: T, step: T, end: T) -> Self {
+        Self { current, step, end }
+    }
+}
+
+impl<T> Iterator for AddressIterator<T>
+where
+    T: PartialOrd + AddAssign + Copy,
+{
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.end {
+            let p = self.current;
+            self.current += self.step;
+            Some(p)
+        } else {
+            None
+        }
+    }
+}
 
 impl TryFrom<usize> for VirtualAddress {
     type Error = core::convert::Infallible;
@@ -166,6 +219,7 @@ impl Physical for FrameNumber {
     }
 }
 
+#[allow(non_snake_case)]
 impl VirtualAddress {
     pub fn level1(&self) -> usize {
         (self.0 >> config::L1_INDEX_SHIFT) & config::INDEX_MASK
@@ -180,40 +234,154 @@ impl VirtualAddress {
         (self.0 >> config::OFFSET_SHIFT) & config::OFFSET_MASK
     }
 
-    pub fn set_level1<T>(&mut self, idx: T)
+    pub fn set_level1<T>(&mut self, idx: T) -> &mut Self
     where
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
         self.0.set_bits(config::L1_RANGE, idx.try_into().unwrap());
+        self
     }
-    pub fn set_level2<T>(&mut self, idx: T)
+    pub fn set_level2<T>(&mut self, idx: T) -> &mut Self
     where
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
         self.0.set_bits(config::L2_RANGE, idx.try_into().unwrap());
+        self
     }
-    pub fn set_level3<T>(&mut self, idx: T)
+    pub fn set_level3<T>(&mut self, idx: T) -> &mut Self
     where
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
         self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
+        self
     }
-    pub fn set_offset<T>(&mut self, idx: T)
+    pub fn set_offset<T>(&mut self, idx: T) -> &mut Self
     where
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
         self.0
             .set_bits(config::OFFSET_RANGE, idx.try_into().unwrap());
+        self
+    }
+
+    fn iter_to(start: Self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+
+        if !AddressEdit::is_aligned_to(start.0, step)
+            || !AddressEdit::is_aligned_to(end_addr.0, step)
+        {
+            None
+        } else {
+            Some(AddressIterator::new(
+                start,
+                VirtualAddress::try_from(step).unwrap(),
+                end_addr,
+            ))
+        }
+    }
+
+    fn iter_for(start: Self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
+        let end_addr = start + VirtualAddress::try_from(step.checked_mul(n).unwrap()).unwrap();
+        if !AddressEdit::is_aligned_to(start.0, step)
+            || !AddressEdit::is_aligned_to(end_addr.0, step)
+        {
+            None
+        } else {
+            Some(AddressIterator::new(
+                start,
+                VirtualAddress::try_from(step).unwrap(),
+                end_addr,
+            ))
+        }
+    }
+
+    // end is exclusive
+    pub fn iter_4K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_4K(self.0)).unwrap(),
+            1 << config::SHIFT_4K,
+            VirtualAddress::try_from(AddressEdit::align_to_4K(end_addr.0)).unwrap(),
+        )
+    }
+    pub fn iter_16K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_16K(self.0)).unwrap(),
+            1 << config::SHIFT_16K,
+            VirtualAddress::try_from(AddressEdit::align_to_16K(end_addr.0)).unwrap(),
+        )
+    }
+    pub fn iter_64K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_64K(self.0)).unwrap(),
+            1 << config::SHIFT_64K,
+            VirtualAddress::try_from(AddressEdit::align_to_64K(end_addr.0)).unwrap(),
+        )
+    }
+    pub fn iter_2M_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_2M(self.0)).unwrap(),
+            1 << config::SHIFT_2M,
+            VirtualAddress::try_from(AddressEdit::align_to_2M(end_addr.0)).unwrap(),
+        )
+    }
+    pub fn iter_1G_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_1G(self.0)).unwrap(),
+            1 << config::SHIFT_1G,
+            VirtualAddress::try_from(AddressEdit::align_to_1G(end_addr.0)).unwrap(),
+        )
+    }
+
+    pub fn iter_4K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_4K(self.0)).unwrap(),
+            1 << config::SHIFT_4K,
+            n,
+        )
+    }
+    pub fn iter_16K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_16K(self.0)).unwrap(),
+            1 << config::SHIFT_16K,
+            n,
+        )
+    }
+    pub fn iter_64K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_64K(self.0)).unwrap(),
+            1 << config::SHIFT_64K,
+            n,
+        )
+    }
+    pub fn iter_2M_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_2M(self.0)).unwrap(),
+            1 << config::SHIFT_2M,
+            n,
+        )
+    }
+    pub fn iter_1G_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_1G(self.0)).unwrap(),
+            1 << config::SHIFT_1G,
+            n,
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bsp;
     #[allow(unused_imports)]
     use test_macros::kernel_test;
 
@@ -304,51 +472,96 @@ mod tests {
             let pa: PhysicalAddress = PhysicalAddress::try_from(0xFFFF_FFFFusize).unwrap();
             assert_eq!(pa.to_frame(), FrameNumber::try_from(last_frame).unwrap());
         }
-        {
-            let va = VirtualAddress::try_from(0xFFF_000).unwrap();
-            assert_eq!(va.is_4K_aligned(), true);
-            assert_eq!(va.is_16K_aligned(), false);
-            assert_eq!(va.is_64K_aligned(), false);
-            assert_eq!(va.is_2M_aligned(), false);
-            assert_eq!(va.is_1G_aligned(), false);
-        }
-        {
-            let va = VirtualAddress::try_from(0xC000).unwrap();
-            assert_eq!(va.is_4K_aligned(), true);
-            assert_eq!(va.is_16K_aligned(), true);
-            assert_eq!(va.is_64K_aligned(), false);
-            assert_eq!(va.is_2M_aligned(), false);
-            assert_eq!(va.is_1G_aligned(), false);
-        }
-        {
-            let va = VirtualAddress::try_from(0x30000).unwrap();
-            assert_eq!(va.is_4K_aligned(), true);
-            assert_eq!(va.is_16K_aligned(), true);
-            assert_eq!(va.is_64K_aligned(), true);
-            assert_eq!(va.is_2M_aligned(), false);
-            assert_eq!(va.is_1G_aligned(), false);
-        }
-        {
-            let va = VirtualAddress::try_from(0x200000).unwrap();
-            assert_eq!(va.is_4K_aligned(), true);
-            assert_eq!(va.is_16K_aligned(), true);
-            assert_eq!(va.is_64K_aligned(), true);
-            assert_eq!(va.is_2M_aligned(), true);
-            assert_eq!(va.is_1G_aligned(), false);
-        }
-        {
-            let va = VirtualAddress::try_from(0xC0000000usize).unwrap();
-            assert_eq!(va.is_4K_aligned(), true);
-            assert_eq!(va.is_16K_aligned(), true);
-            assert_eq!(va.is_64K_aligned(), true);
-            assert_eq!(va.is_2M_aligned(), true);
-            assert_eq!(va.is_1G_aligned(), true);
-        }
 
         {
             PhysicalAddress::try_from(1usize << 48).expect_err("Overflow");
             FrameNumber::try_from((((1usize << 48) - 1) >> config::SHIFT_4K) + 1)
                 .expect_err("Overflow");
+        }
+    }
+    #[kernel_test]
+    fn test_address_iterator() {
+        let end = VirtualAddress::try_from(0xFFF_FFFFusize).unwrap();
+        {
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            for (i, v) in start.iter_4K_to(end).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(i * (1 << config::SHIFT_4K)).unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            for (i, v) in start.iter_16K_to(end).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(i * (1 << config::SHIFT_16K)).unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            for (i, v) in start.iter_64K_to(end).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(i * (1 << config::SHIFT_64K)).unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            for (i, v) in start.iter_2M_to(end).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(i * (1 << config::SHIFT_2M)).unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            for (i, v) in start.iter_1G_to(end).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(i * (1 << config::SHIFT_1G)).unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0xFFFBC69usize).unwrap();
+            let n = 100;
+            for (i, v) in start.iter_1G_for(n).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(i * (config::MASK_1G + 1)).unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0xFFFBC69usize).unwrap();
+            let n = 100;
+            for (i, v) in start.iter_4K_for(n).unwrap().enumerate() {
+                assert_eq!(
+                    v,
+                    VirtualAddress::try_from(
+                        (0xFFFBC69usize & config::ALIGN_4K) + i * (config::MASK_4K + 1)
+                    )
+                    .unwrap()
+                )
+            }
+        }
+        {
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            for (_, _) in start.iter_4K_for(0).unwrap().enumerate() {
+                panic!()
+            }
+            for (_, _) in start
+                .iter_1G_to(VirtualAddress::try_from(bsp::mmio::PERIPHERAL_START).unwrap())
+                .unwrap()
+                .enumerate()
+            {
+                panic!()
+            }
         }
     }
 }
