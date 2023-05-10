@@ -27,6 +27,7 @@ PHDRS
     segment_code PT_LOAD FLAGS(5);
     segment_bss PT_LOAD FLAGS(6);
     segment_data PT_LOAD FLAGS(6);
+    segment_table PT_LOAD FLAGS(6);
 }
 
 SECTIONS
@@ -63,17 +64,28 @@ SECTIONS
     /***********************************************************************************************
     * Data + BSS
     ***********************************************************************************************/
-    .data : { *(.data*) }:segment_data
+    .data : {
+        __data_start = .;
+        *(.data*);
+        __data_end_exclusive = .;
+    }:segment_data
 
 
-    .bss(NOLOAD) : ALIGN(16)
+    .bss(NOLOAD) : ALIGN(PAGE_SIZE) 
     {
         __bss_start = .;
         *(.bss*);
-        . = ALIGN(PAGE_SIZE);
+        /*
         *(page_table);
+        */
+        . = ALIGN(PAGE_SIZE);
         __bss_end_exclusive = .;
     }: segment_bss
+
+    .page_table(NOLOAD) : ALIGN(PAGE_SIZE)
+    {
+        *(page_table);
+    }: segment_table
 
 
 

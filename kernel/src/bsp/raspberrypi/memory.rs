@@ -35,7 +35,6 @@ pub mod mmio {
     pub const GPIO_START: usize = PERIPHERAL_START + GPIO_OFFSET;
     pub const UART_START: usize = PERIPHERAL_START + UART_OFFSET;
     pub const MINI_UART_START: usize = PERIPHERAL_START + MINI_UART_OFFSET;
-    pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x40000_0000;
 }
 
 #[cfg(feature = "bsp_rpi4")]
@@ -46,5 +45,4 @@ pub mod mmio {
     pub const GPIO_START: usize = PERIPHERAL_START + GPIO_OFFSET;
     pub const UART_START: usize = PERIPHERAL_START + UART_OFFSET;
     pub const MINI_UART_START: usize = PERIPHERAL_START + MINI_UART_OFFSET;
-    pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0xFFFF_FFFF; // we assume pi4 has 4GB memory
 }

@@ -47,8 +47,6 @@ _start:
     mov sp, x0
 
 
-    // x0 holds the function argument to _start_rust
-    ADR_LOAD x0, l1_page_table
     b _start_rust
 
 
@@ -63,7 +61,7 @@ _start:
 .type	_start, function
 
 
-.section page_table
+.section page_table, "aw", @nobits
 .p2align 12 
 .global l1_page_table
 l1_page_table:

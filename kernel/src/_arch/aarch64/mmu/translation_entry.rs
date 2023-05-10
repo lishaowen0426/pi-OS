@@ -181,6 +181,62 @@ impl<'a, L: TranslationTableLevel> BlockEntry<'a, L> {
         self
     }
 
+    pub fn set_RW_normal(&mut self) -> &mut Self {
+        self.set_AP(0b00) // RW
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_SH(0b11) // Inner shareable
+            .set_AttrIdx(0b1) // Normal memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+        self
+    }
+    pub fn set_RO_normal(&mut self) -> &mut Self {
+        self.set_AP(0b10) // Read Only
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_SH(0b11) // Inner shareable
+            .set_AttrIdx(0b1) // Normal memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+        self
+    }
+    pub fn set_X_normal(&mut self) -> &mut Self {
+        self.set_AP(0b10) // Read Only
+            .set_UXN(0b1) // Never Execute at EL0
+            .set_PXN(0b0) // Executable at EL1
+            .set_SH(0b11) // Inner shareable
+            .set_AttrIdx(0b1) // Normal memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+        self
+    }
+    pub fn set_RW_device(&mut self) -> &mut Self {
+        self.set_AP(0b00) // RW
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_AttrIdx(0b0) // Device memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+                        // Shareability does not matter to device memory
+        self
+    }
+    pub fn set_RO_device(&mut self) -> &mut Self {
+        self.set_AP(0b10) // Read Only
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_AttrIdx(0b0) // Device memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+                        // Shareability does not matter to device memory
+        self
+    }
+
     pub fn value(&self) -> u64 {
         *self.entry
     }
@@ -190,11 +246,10 @@ impl<'a, L: TranslationTableLevel> BlockEntry<'a, L> {
 }
 impl<'a> BlockAddress for BlockEntry<'a, Level1> {
     fn set_output_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !AddressEdit::is_1G_aligned(pa.0) {
+        if !pa.is_1G_aligned() {
             Err(EALIGN)
         } else {
-            self.entry
-                .set_bits(30..48, AddressEdit::shift_1G(pa.0) as u64);
+            self.entry.set_bits(30..48, pa.shift_1G() as u64);
             Ok(())
         }
     }
@@ -205,11 +260,10 @@ impl<'a> BlockAddress for BlockEntry<'a, Level1> {
 }
 impl<'a> BlockAddress for BlockEntry<'a, Level2> {
     fn set_output_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !AddressEdit::is_2M_aligned(pa.0) {
+        if !pa.is_2M_aligned() {
             Err(EALIGN)
         } else {
-            self.entry
-                .set_bits(21..48, AddressEdit::shift_2M(pa.0) as u64);
+            self.entry.set_bits(21..48, pa.shift_2M() as u64);
             Ok(())
         }
     }
@@ -308,17 +362,73 @@ impl<'a> PageEntry<'a> {
         self.entry.set_bits(2..12, v & 0b11_1111_1111);
         self
     }
+
+    pub fn set_RW_normal(&mut self) -> &mut Self {
+        self.set_AP(0b00) // RW
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_SH(0b11) // Inner shareable
+            .set_AttrIdx(0b1) // Normal memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+        self
+    }
+    pub fn set_RO_normal(&mut self) -> &mut Self {
+        self.set_AP(0b10) // Read Only
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_SH(0b11) // Inner shareable
+            .set_AttrIdx(0b1) // Normal memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+        self
+    }
+    pub fn set_X_normal(&mut self) -> &mut Self {
+        self.set_AP(0b10) // Read Only
+            .set_UXN(0b1) // Never Execute at EL0
+            .set_PXN(0b0) // Executable at EL1
+            .set_SH(0b11) // Inner shareable
+            .set_AttrIdx(0b1) // Normal memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+        self
+    }
+    pub fn set_RW_device(&mut self) -> &mut Self {
+        self.set_AP(0b00) // RW
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_AttrIdx(0b0) // Device memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+                        // Shareability does not matter to device memory
+        self
+    }
+    pub fn set_RO_device(&mut self) -> &mut Self {
+        self.set_AP(0b10) // Read Only
+            .set_UXN(0b1) // Never Execute
+            .set_PXN(0b1) // Never Execute
+            .set_AttrIdx(0b0) // Device memory
+            .set_NS(0) // Always secure
+            .set_nG(0) // Always global
+            .set_AF(1); // Accessed
+                        // Shareability does not matter to device memory
+        self
+    }
+
     pub fn get_output_addr(&self) -> PhysicalAddress {
         PhysicalAddress::try_from((self.entry.get_bits(12..48) as usize) << config::SHIFT_4K)
             .unwrap()
     }
 
     pub fn set_output_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !AddressEdit::is_4K_aligned(pa.0) {
+        if !pa.is_4K_aligned() {
             Err(EALIGN)
         } else {
-            self.entry
-                .set_bits(12..48, AddressEdit::shift_4K(pa.0) as u64);
+            self.entry.set_bits(12..48, pa.shift_4K() as u64);
             Ok(())
         }
     }
@@ -362,17 +472,29 @@ impl<'a> TableEntry<'a> {
         self
     }
 
+    // Table attributes are fixed
+    //
+    // APTable = 01: Accesses from EL0 are never permitted in subsequent tables
+    // UXN = PXN = 1: Never execute
+    // NS = 0: secure
+    pub fn set_table_attributes(&mut self) -> &mut Self {
+        self.set_APTable(0b01)
+            .set_UXNTable(0b1)
+            .set_PXNTable(0b1)
+            .set_NSTable(0);
+        self
+    }
+
     pub fn get_next_level_table_addr(&self) -> PhysicalAddress {
         PhysicalAddress::try_from((self.entry.get_bits(12..48) as usize) << config::SHIFT_4K)
             .unwrap()
     }
 
     pub fn set_next_level_table_addr(&mut self, pa: PhysicalAddress) -> Result<(), ErrorCode> {
-        if !AddressEdit::is_4K_aligned(pa.0) {
+        if !pa.is_4K_aligned() {
             Err(EALIGN)
         } else {
-            self.entry
-                .set_bits(12..48, AddressEdit::shift_4K(pa.0) as u64);
+            self.entry.set_bits(12..48, pa.shift_4K() as u64);
             Ok(())
         }
     }
@@ -438,6 +560,7 @@ impl<L: TranslationTableLevel3> TranslationTableEntry<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::println;
     #[allow(unused_imports)]
     use test_macros::kernel_test;
 
@@ -456,9 +579,9 @@ mod tests {
                 .set_AttrIdx(0b101);
             assert_eq!(b.value(), ans);
 
-            b.set_output_addr(PhysicalAddress::try_from(0x0A46usize << 30).unwrap())
+            b.set_output_addr(PhysicalAddress::try_from(0b11usize << 30).unwrap())
                 .unwrap();
-            ans |= 0x0A46 << 30;
+            ans |= 0b11 << 30;
             assert_eq!(b.value(), ans);
 
             b.set_valid();
@@ -483,9 +606,9 @@ mod tests {
 
             assert_eq!(b.value(), ans);
 
-            b.set_output_addr(PhysicalAddress::try_from(0x30FBC56usize << 21).unwrap())
+            b.set_output_addr(PhysicalAddress::try_from(0b11011usize << 21).unwrap())
                 .unwrap();
-            ans |= 0x30FBC56u64 << 21;
+            ans |= 0b11011 << 21;
             assert_eq!(b.value(), ans as u64);
             b.set_valid();
             ans |= 0b1;
@@ -505,9 +628,9 @@ mod tests {
             b.set_NSTable(1).set_APTable(0b10).set_PXNTable(1);
             assert_eq!(b.value(), ans);
 
-            b.set_next_level_table_addr(PhysicalAddress::try_from(0x174AB3DCFusize << 12).unwrap())
+            b.set_next_level_table_addr(PhysicalAddress::try_from(0b1101011usize << 12).unwrap())
                 .unwrap();
-            ans |= 0x174AB3DCFu64 << 12;
+            ans |= 0b1101011 << 12;
             assert_eq!(b.value(), ans);
             b.set_valid();
             ans |= 0b1;
@@ -530,9 +653,9 @@ mod tests {
                 .set_AttrIdx(0b101);
             assert_eq!(b.value(), ans);
 
-            b.set_output_addr(PhysicalAddress::try_from(0x174AB3DCFusize << 12).unwrap())
+            b.set_output_addr(PhysicalAddress::try_from(0b011011usize << 12).unwrap())
                 .unwrap();
-            ans |= 0x174AB3DCFu64 << 12;
+            ans |= 0b011011u64 << 12;
             assert_eq!(b.value(), ans);
             b.set_valid();
             ans |= 0b1;

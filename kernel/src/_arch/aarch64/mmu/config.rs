@@ -29,7 +29,8 @@ pub(super) mod config {
     pub const INDEX_BITS: usize = 9;
     pub const INDEX_MASK: usize = (1 << INDEX_BITS) - 1;
 
-    pub const PAGE_SIZE: usize = 1 << OFFSET_BITS;
+    pub const PAGE_SIZE: usize = 1 << SHIFT_4K;
+    pub const FRAME_SIZE: usize = 1 << SHIFT_4K;
     pub const ENTRIES_PER_TABLE: usize = PAGE_SIZE / 8;
 
     pub const OFFSET_RANGE: Range<usize> = 0..12;
@@ -46,6 +47,14 @@ pub(super) mod config {
     pub const L1_VIRTUAL_ADDRESS: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L2_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L3_INDEX_SHIFT);
+
+    #[cfg(feature = "bsp_rpi3")]
+    pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x40000_0000;
+    #[cfg(feature = "bsp_rpi4")]
+    pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0xFFFF_FFFF; // we assume pi4 has 4GB memory
+
+    pub const NUMBER_OF_FRAMES: usize = (PHYSICAL_MEMORY_END_INCLUSIVE >> SHIFT_4K) + 1;
+    pub const NUMBER_OF_PAGES: usize = (0xFFFF_FFFF_FFFF >> SHIFT_4K) + 1;
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use super::{address::*, config, translation_entry::*};
+use super::{address::*, config, frame_allocator::FrameAllocator, translation_entry::*};
 use crate::{bsp::mmio, errno::*, println};
 use aarch64_cpu::registers::TTBR0_EL1;
 use core::{
@@ -94,18 +94,44 @@ pub fn set_up_init_translation_table() -> FrameNumber {
 }
 
 impl TranslationTable<Level1> {
+    pub fn map(
+        va: VirtualAddress,
+        pa: PhysicalAddress,
+        frame_allocator: &dyn FrameAllocator,
+    ) -> Result<(), ErrorCode> {
+        Ok(())
+    }
+
     pub fn set_up_init_mapping(&mut self) -> Result<(), ErrorCode> {
+        let mut boot_core_stack_end_exclusive_addr: usize = 0;
+        let mut code_start_addr: usize = 0;
+        let mut code_end_addr: usize = 0;
+        let mut bss_start_addr: usize = 0;
+        let mut bss_end_addr: usize = 0;
+        let l1_page_start: usize = self.base.addr().get();
+        let l1_page_end: usize = l1_page_start + config::PAGE_SIZE;
+        unsafe {
+            boot_core_stack_end_exclusive_addr =
+                &__boot_core_stack_end_exclusive as *const _ as usize;
+            code_start_addr = &__code_start as *const _ as usize;
+            code_end_addr = &__code_end_exclusive as *const _ as usize;
+            bss_start_addr = &__bss_start as *const _ as usize;
+            bss_end_addr = &__bss_end_exclusive as *const _ as usize;
+            println!(
+                "boot_core_stack_end:{:#018x}",
+                boot_core_stack_end_exclusive_addr
+            );
+            println!("code_start:{:#018x}", code_start_addr);
+            println!("code_end:{:#018x}", code_end_addr);
+            println!("bss_start:{:#018x}", bss_start_addr);
+            println!("bss_end:{:#018x}", bss_end_addr);
+            println!("l1 physical addr: {:#018x}", l1_page_start);
+        }
         // 1. recursive L1
         {
-            let addr: usize = self.base.addr().get();
-            println!("l1 physical addr: {:x}", addr);
             let mut recursive_table_entry = self[config::RECURSIVE_L1_INDEX].set_table();
-            // APTable = 01: Accesses from EL0 are never permitted in subsequent tables
-            recursive_table_entry
-                .set_APTable(0b01)
-                .set_UXNTable(0b1)
-                .set_PXNTable(0b1)
-                .set_NSTable(0);
+            recursive_table_entry.set_table_attributes();
+
             println!("recursive table: {}", recursive_table_entry);
             unsafe {
                 let mut recursive_page_entry = recursive_table_entry.convert_to_page();
@@ -119,16 +145,8 @@ impl TranslationTable<Level1> {
                 // nG = 0:   The translation is global. We only use a single AS, this should not
                 // matter AF = 1?:  Not sure
                 recursive_page_entry
-                    .set_AP(0b00)
-                    .set_UXN(0b1)
-                    .set_PXN(0b1)
-                    .set_SH(0b11)
-                    .set_AttrIdx(0b1)
-                    .set_Contiguous(0)
-                    .set_NS(0)
-                    .set_nG(0)
-                    .set_AF(1)
-                    .set_output_addr(PhysicalAddress::try_from(addr).unwrap())
+                    .set_RW_normal()
+                    .set_output_addr(PhysicalAddress::try_from(l1_page_start).unwrap())
                     .unwrap();
                 println!("recursive page: {}", recursive_page_entry);
                 recursive_page_entry.set_valid();
@@ -139,13 +157,37 @@ impl TranslationTable<Level1> {
         // On pi3, L1[MMIO_START] = 0
         // On pi4, L1[MMIO_START] = 3
         {
+            let boot_stack_end =
+                VirtualAddress::try_from(boot_core_stack_end_exclusive_addr).unwrap();
+            let code_start = VirtualAddress::try_from(code_start_addr).unwrap();
+            let code_end = VirtualAddress::try_from(code_end_addr).unwrap();
+            let bss_start = VirtualAddress::try_from(bss_start_addr).unwrap();
+            let bss_end = VirtualAddress::try_from(bss_end_addr).unwrap();
+            let peripheral_start = VirtualAddress::try_from(0xFE00_0000usize).unwrap();
+            println!("boot stack top: {:?}", boot_stack_end);
+            println!("code start: {:?}", code_start);
+            println!("code end: {:?}", code_end);
+            println!("bss start: {:?}", bss_start);
+            println!("bss end: {:?}", bss_end);
+            println!("MMIO start: {:?}", peripheral_start);
+
+            let mut free_frame = PhysicalAddress::try_from(l1_page_end).unwrap().to_frame();
+            println!("free frame from {:?}", free_frame);
+
             let va_start = VirtualAddress::try_from(0usize).unwrap();
             // let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
-            let peripheral_start = VirtualAddress::try_from(0xFE00_0000usize).unwrap();
-            va_start
-                .iter_1G_to(peripheral_start)
-                .unwrap()
-                .for_each(|va| {});
+            println!("boot stack pages");
+            va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
+                println!("{}", va);
+            });
+            println!("code pages");
+            code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
+                println!("{}", va);
+            });
+            println!("bss pages");
+            bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
+                println!("{}", va);
+            });
         }
 
         Ok(())
@@ -160,14 +202,6 @@ mod tests {
 
     #[kernel_test]
     fn test_translation_table() {
-        // unsafe {
-        // println!("boot_core_stack_end:{:p}", &__boot_core_stack_end_exclusive);
-        // println!("code_start:{:p}", &__code_start);
-        // println!("code_end:{:p}", &__code_end_exclusive);
-        // println!("bss_start:{:p}", &__bss_start);
-        // println!("table:{:x}", get_ttbr0());
-        // println!("bss_end:{:p}", &__bss_end_exclusive);
-        // }
         {
             let va_start = VirtualAddress::default();
             let va_peripheral = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
@@ -197,12 +231,9 @@ mod tests {
                 l1_virt.level2(),
                 l1_virt.level3()
             );
-
-            let mut tmp = VirtualAddress::default();
-            tmp.set_level1(3).set_level2(496);
-            println!("tmp {}", tmp);
         }
         {
+            println!("ttbr0: {:#018x}", get_ttbr0());
             let mut l1_table: TranslationTable<Level1> = TranslationTable::new(
                 get_ttbr0() as *mut TranslationTableEntry<Level1>,
                 config::ENTRIES_PER_TABLE,

@@ -24,12 +24,15 @@ global_asm!(
     CONST_CORE_ID_MASK = const 0b11
 );
 
+use crate::println;
+
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;
+    static l1_page_table: u8;
 }
 
 #[inline(always)]
-unsafe fn prepare_el2_to_el1(page_table_addr: u64) {
+unsafe fn prepare_el2_to_el1() {
     CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCEN::SET + CNTHCTL_EL2::EL1PCTEN::SET);
     CNTVOFF_EL2.set(0);
 
@@ -45,12 +48,11 @@ unsafe fn prepare_el2_to_el1(page_table_addr: u64) {
 
     ELR_EL2.set(crate::kernel_main as *const () as u64);
     SP_EL1.set(&__boot_core_stack_end_exclusive as *const u8 as u64);
-    TTBR0_EL1.set_baddr(page_table_addr);
-
+    TTBR0_EL1.set_baddr(&l1_page_table as *const _ as u64);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _start_rust(page_table_addr: u64) -> ! {
-    prepare_el2_to_el1(page_table_addr);
+pub unsafe extern "C" fn _start_rust() -> ! {
+    prepare_el2_to_el1();
     asm::eret()
 }

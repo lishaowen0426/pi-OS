@@ -1,5 +1,5 @@
 use super::config;
-use crate::{errno::*, utils::bitfields::Bitfields};
+use crate::{bsp::mmio, errno::*, utils::bitfields::Bitfields};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -64,9 +64,9 @@ pub mod AddressEdit {
 }
 macro_rules! declare_address {
     ($name:ident, $tt:ty, $lit: literal $(,)?) => {
-        #[derive(Default, Eq, PartialEq, Ord, PartialOrd, Debug, Clone, Copy)]
+        #[derive(Default, Eq, PartialEq, Ord, PartialOrd, Clone, Copy)]
         #[repr(transparent)]
-        pub struct $name(pub $tt);
+        pub struct $name($tt);
 
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -94,21 +94,132 @@ macro_rules! declare_address {
 
         impl AddAssign for $name {
             fn add_assign(&mut self, rhs: Self) {
-                self.0 = self.0.checked_add(rhs.0).unwrap();
+                *self = Self::try_from(self.0.checked_add(rhs.0).unwrap()).unwrap();
             }
         }
         impl SubAssign for $name {
             fn sub_assign(&mut self, rhs: Self) {
-                self.0 = self.0.checked_sub(rhs.0).unwrap();
+                *self = Self::try_from(self.0.checked_sub(rhs.0).unwrap()).unwrap();
             }
         }
     };
 }
 
+macro_rules! impl_address {
+    ($name: ident) => {
+        #[allow(non_snake_case, dead_code)]
+        impl $name {
+            pub fn is_4K_aligned(&self) -> bool {
+                (self.0 & config::ALIGN_4K) == self.0
+            }
+            pub fn is_16K_aligned(&self) -> bool {
+                (self.0 & config::ALIGN_16K) == self.0
+            }
+            pub fn is_64K_aligned(&self) -> bool {
+                (self.0 & config::ALIGN_64K) == self.0
+            }
+            pub fn is_2M_aligned(&self) -> bool {
+                (self.0 & config::ALIGN_2M) == self.0
+            }
+            pub fn is_1G_aligned(&self) -> bool {
+                (self.0 & config::ALIGN_1G) == self.0
+            }
+            pub fn is_aligned_to(&self, alignment: usize) -> bool {
+                (self.0 & (!(alignment - 1))) == self.0
+            }
+
+            pub fn shift_4K(&self) -> usize {
+                self.0 >> config::SHIFT_4K
+            }
+            pub fn shift_16K(&self) -> usize {
+                self.0 >> config::SHIFT_16K
+            }
+            pub fn shift_64K(&self) -> usize {
+                self.0 >> config::SHIFT_64K
+            }
+            pub fn shift_2M(&self) -> usize {
+                self.0 >> config::SHIFT_2M
+            }
+            pub fn shift_1G(&self) -> usize {
+                self.0 >> config::SHIFT_1G
+            }
+
+            pub fn align_to_4K(&self) -> usize {
+                self.0 & config::ALIGN_4K
+            }
+            pub fn align_to_16K(&self) -> usize {
+                self.0 & config::ALIGN_16K
+            }
+            pub fn align_to_64K(&self) -> usize {
+                self.0 & config::ALIGN_64K
+            }
+            pub fn align_to_2M(&self) -> usize {
+                self.0 & config::ALIGN_2M
+            }
+            pub fn align_to_1G(&self) -> usize {
+                self.0 & config::ALIGN_1G
+            }
+        }
+    };
+}
+
+macro_rules! impl_number {
+    ($name: ident) => {
+        impl $name {
+            pub fn next(&mut self) -> Option<Self> {
+                let copy = *self;
+                if let Ok(n) = Self::try_from(self.0 + 1) {
+                    *self = n;
+                    Some(copy)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
 declare_address!(VirtualAddress, usize, "{:#018x}");
 declare_address!(PhysicalAddress, usize, "{:#018x}");
 declare_address!(PageNumber, usize, "{}");
 declare_address!(FrameNumber, usize, "{}");
+
+impl_address!(VirtualAddress);
+impl_address!(PhysicalAddress);
+impl_number!(PageNumber);
+impl_number!(FrameNumber);
+
+impl fmt::Debug for VirtualAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "VA = {:#018x}, L1[{}], L2[{}], L3[{}]",
+            self.0,
+            self.level1(),
+            self.level2(),
+            self.level3()
+        )
+    }
+}
+impl fmt::Debug for PhysicalAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "PA = {:#018x}, frame = {}  ",
+            self.0,
+            AddressEdit::shift_4K(self.0)
+        )
+    }
+}
+impl fmt::Debug for PageNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}  ", self.to_address())
+    }
+}
+impl fmt::Debug for FrameNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}  ", self.to_address())
+    }
+}
 
 // end is exclusive
 #[derive(Debug)]
@@ -144,15 +255,19 @@ where
 }
 
 impl TryFrom<usize> for VirtualAddress {
-    type Error = core::convert::Infallible;
+    type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Ok(Self(value))
+        if value > 0xFFFF_FFFF_FFFF {
+            Err(EOVERFLOW)
+        } else {
+            Ok(Self(value))
+        }
     }
 }
 impl TryFrom<usize> for PhysicalAddress {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value > ((1usize << 48) - 1) {
+        if value > config::PHYSICAL_MEMORY_END_INCLUSIVE {
             Err(EOVERFLOW)
         } else {
             Ok(Self(value))
@@ -160,15 +275,19 @@ impl TryFrom<usize> for PhysicalAddress {
     }
 }
 impl TryFrom<usize> for PageNumber {
-    type Error = core::convert::Infallible;
+    type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Ok(Self(value))
+        if value >= config::NUMBER_OF_PAGES {
+            Err(EOVERFLOW)
+        } else {
+            Ok(Self(value))
+        }
     }
 }
 impl TryFrom<usize> for FrameNumber {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value > (((1usize << 48) - 1) >> config::SHIFT_4K) {
+        if value >= config::NUMBER_OF_FRAMES {
             Err(EOVERFLOW)
         } else {
             Ok(Self(value))
@@ -562,6 +681,15 @@ mod tests {
             {
                 panic!()
             }
+        }
+        {
+            let mut frame = FrameNumber::try_from(config::NUMBER_OF_FRAMES - 1).unwrap();
+            assert!(frame.next().is_none());
+
+            let mut frame2 = FrameNumber::try_from(7463).unwrap();
+            let copy = frame2.next().unwrap();
+            assert_eq!(frame2, FrameNumber::try_from(7463 + 1).unwrap());
+            assert_eq!(copy, FrameNumber::try_from(7463).unwrap());
         }
     }
 }

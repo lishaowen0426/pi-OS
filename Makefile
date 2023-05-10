@@ -276,6 +276,8 @@ define KERNEL_TEST_RUNNER
     TEST_ELF=$$(echo $$1 | sed -e 's/.*target/target/g')
     TEST_BINARY=$$(echo $$1.img | sed -e 's/.*target/target/g')
 
+	# $(DOCKER_TOOLS) $(READELF_BINARY) --headers $$TEST_ELF 
+	# $(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $$TEST_ELF | sort | rustfilt
     $(OBJCOPY_CMD) $$TEST_ELF $$TEST_BINARY
     $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS) -kernel $$TEST_BINARY
 endef

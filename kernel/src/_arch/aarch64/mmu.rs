@@ -14,6 +14,9 @@ mod translation_entry;
 #[path = "mmu/config.rs"]
 mod mmu_config;
 
+#[path = "mmu/frame_allocator.rs"]
+mod frame_allocator;
+
 use mmu_config::config;
 
 
@@ -62,6 +65,10 @@ impl MemoryManagementUnit {
     }
 
     pub fn config_mair_el1(&self) {
+
+        // Be careful when change this!
+        // We use the attribute index in some places when we set the block/page table entry AttrIdx
+        // Remember to change those if MAIR_EL1 is modified.
         MAIR_EL1.write(
             MAIR_EL1::Attr1_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr1_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc

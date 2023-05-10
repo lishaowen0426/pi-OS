@@ -62,8 +62,6 @@ _start:
 
 
 
-	// Jump to Rust code. x0 holds the function argument provided to _start_rust().
-    ADR_LOAD x0, l1_page_table
 	b	_start_rust
 
 	// Infinitely wait for events (aka "park the core").
@@ -75,7 +73,7 @@ _start:
 .type	_start, function
 .global	_start_rust
 
-.section page_table
+.section page_table, "aw", @nobits
 .p2align 12 
 .global l1_page_table
 l1_page_table:
