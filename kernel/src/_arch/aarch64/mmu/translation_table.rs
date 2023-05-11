@@ -1,4 +1,4 @@
-use super::{address::*, config, frame_allocator::FrameAllocator, translation_entry::*};
+use super::{address::*, config, frame_allocator::*, translation_entry::*};
 use crate::{bsp::mmio, errno::*, println};
 use aarch64_cpu::registers::TTBR0_EL1;
 use core::{
@@ -94,10 +94,14 @@ pub fn set_up_init_translation_table() -> FrameNumber {
 }
 
 impl TranslationTable<Level1> {
+    pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
+        None
+    }
     pub fn map(
+        &mut self,
         va: VirtualAddress,
         pa: PhysicalAddress,
-        frame_allocator: &dyn FrameAllocator,
+        frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         Ok(())
     }
@@ -108,8 +112,8 @@ impl TranslationTable<Level1> {
         let mut code_end_addr: usize = 0;
         let mut bss_start_addr: usize = 0;
         let mut bss_end_addr: usize = 0;
-        let l1_page_start: usize = self.base.addr().get();
-        let l1_page_end: usize = l1_page_start + config::PAGE_SIZE;
+        let l1_page_start_addr: usize = self.base.addr().get();
+        let l1_page_end_addr: usize = l1_page_start_addr + config::PAGE_SIZE;
         unsafe {
             boot_core_stack_end_exclusive_addr =
                 &__boot_core_stack_end_exclusive as *const _ as usize;
@@ -117,40 +121,30 @@ impl TranslationTable<Level1> {
             code_end_addr = &__code_end_exclusive as *const _ as usize;
             bss_start_addr = &__bss_start as *const _ as usize;
             bss_end_addr = &__bss_end_exclusive as *const _ as usize;
-            println!(
-                "boot_core_stack_end:{:#018x}",
-                boot_core_stack_end_exclusive_addr
-            );
-            println!("code_start:{:#018x}", code_start_addr);
-            println!("code_end:{:#018x}", code_end_addr);
-            println!("bss_start:{:#018x}", bss_start_addr);
-            println!("bss_end:{:#018x}", bss_end_addr);
-            println!("l1 physical addr: {:#018x}", l1_page_start);
         }
         // 1. recursive L1
         {
-            let mut recursive_table_entry = self[config::RECURSIVE_L1_INDEX].set_table();
+            let mut recursive_table_entry =
+                self[config::RECURSIVE_L1_INDEX].get().set_table().unwrap();
             recursive_table_entry.set_table_attributes();
 
-            println!("recursive table: {}", recursive_table_entry);
+            println!("recursive {}", recursive_table_entry);
             unsafe {
-                let mut recursive_page_entry = recursive_table_entry.convert_to_page();
-                // AP = 00:  EL1 -> R/W, EL0 -> Fault
-                // UXN = 1:  Non-executable at EL0
-                // PXN = 1:  Non-executable at EL1
-                // SH = 11:  L1 page table is inner shareable
-                // AttrIdx = 1:  Attr1 is used. Check the TCR_EL1 and MAIR_EL1 config
-                // Contiguous = 0
-                // NS = 0:   The output address is always in the secure state
-                // nG = 0:   The translation is global. We only use a single AS, this should not
-                // matter AF = 1?:  Not sure
+                let l1_page_table_start = PhysicalAddress::try_from(l1_page_start_addr).unwrap();
+                println!("l1 page table: {:?}", l1_page_table_start);
+                let mut recursive_page_entry = recursive_table_entry.table_to_page().unwrap();
+
+                recursive_page_entry.set_RW_normal().unwrap();
+
                 recursive_page_entry
-                    .set_RW_normal()
-                    .set_output_addr(PhysicalAddress::try_from(l1_page_start).unwrap())
+                    .set_address(l1_page_table_start)
                     .unwrap();
-                println!("recursive page: {}", recursive_page_entry);
-                recursive_page_entry.set_valid();
+                println!("recursive {}", recursive_page_entry);
+                self[config::RECURSIVE_L1_INDEX] =
+                    TranslationTableEntry::from(recursive_page_entry);
             }
+
+            println!("entry {}", self[config::RECURSIVE_L1_INDEX]);
         }
 
         // 2. Identity map before where MMIO starts using l1 1GB blocks
@@ -164,15 +158,26 @@ impl TranslationTable<Level1> {
             let bss_start = VirtualAddress::try_from(bss_start_addr).unwrap();
             let bss_end = VirtualAddress::try_from(bss_end_addr).unwrap();
             let peripheral_start = VirtualAddress::try_from(0xFE00_0000usize).unwrap();
+            let l1_page_table_start = VirtualAddress::try_from(l1_page_start_addr).unwrap();
             println!("boot stack top: {:?}", boot_stack_end);
             println!("code start: {:?}", code_start);
             println!("code end: {:?}", code_end);
             println!("bss start: {:?}", bss_start);
             println!("bss end: {:?}", bss_end);
+            println!("l1 page table: {:?}", l1_page_table_start);
             println!("MMIO start: {:?}", peripheral_start);
 
-            let mut free_frame = PhysicalAddress::try_from(l1_page_end).unwrap().to_frame();
+            let mut free_frame = PhysicalAddress::try_from(l1_page_end_addr)
+                .unwrap()
+                .to_frame();
             println!("free frame from {:?}", free_frame);
+            let mut linear_allocator = LinearFrameAllocator::new(free_frame);
+
+            let table_walk_and_identity_map =
+                |va: VirtualAddress, frame_allocator: &mut dyn FrameAllocator| {
+                    let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
+                    let e = self[1].get();
+                };
 
             let va_start = VirtualAddress::try_from(0usize).unwrap();
             // let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
@@ -217,7 +222,7 @@ mod tests {
             );
 
             println!(
-                "Peripheral starts at {}, it uses l1 entry {}, l2 entry {}, l3 entry {}",
+                "Peripheral starts at {}, it is at l1[{}], l2[{}], l3[{}]",
                 va_peripheral,
                 va_peripheral.level1(),
                 va_peripheral.level2(),

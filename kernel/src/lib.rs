@@ -3,6 +3,7 @@
 #![allow(incomplete_features)]
 #![feature(asm_const)]
 #![feature(const_option)]
+#![feature(ptr_from_ref)]
 #![feature(associated_type_defaults)]
 #![feature(core_intrinsics)]
 #![feature(pointer_is_aligned)]

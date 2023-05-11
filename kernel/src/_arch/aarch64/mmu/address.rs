@@ -109,6 +109,9 @@ macro_rules! impl_address {
     ($name: ident) => {
         #[allow(non_snake_case, dead_code)]
         impl $name {
+            pub fn value(&self) -> usize {
+                self.0
+            }
             pub fn is_4K_aligned(&self) -> bool {
                 (self.0 & config::ALIGN_4K) == self.0
             }
@@ -358,7 +361,7 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0.set_bits(config::L1_RANGE, idx.try_into().unwrap());
+        self.0 = self.0.set_bits(config::L1_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_level2<T>(&mut self, idx: T) -> &mut Self
@@ -366,7 +369,7 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0.set_bits(config::L2_RANGE, idx.try_into().unwrap());
+        self.0 = self.0.set_bits(config::L2_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_level3<T>(&mut self, idx: T) -> &mut Self
@@ -374,7 +377,7 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
+        self.0 = self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_offset<T>(&mut self, idx: T) -> &mut Self
@@ -382,7 +385,8 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0
+        self.0 = self
+            .0
             .set_bits(config::OFFSET_RANGE, idx.try_into().unwrap());
         self
     }

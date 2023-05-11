@@ -9,8 +9,8 @@ where
     fn get_bit(&self, index: usize) -> Self::Output;
     fn get_bits(&self, range: Range<usize>) -> Self::Output;
 
-    fn set_bit<T: Into<Self>>(&mut self, index: usize, val: T);
-    fn set_bits<T: Into<Self>>(&mut self, range: Range<usize>, val: T);
+    fn set_bit<T: Into<Self>>(self, index: usize, val: T) -> Self;
+    fn set_bits<T: Into<Self>>(self, range: Range<usize>, val: T) -> Self;
 }
 
 impl Bitfields for u64 {
@@ -21,18 +21,18 @@ impl Bitfields for u64 {
         let mask = (1 << (range.end - range.start)) - 1;
         (*self >> range.start) & mask
     }
-    fn set_bit<T: Into<Self>>(&mut self, index: usize, val: T) {
-        let origin = *self;
+    fn set_bit<T: Into<Self>>(self, index: usize, val: T) -> Self {
+        let origin = self;
         let mut higher: u64 = 0;
         if index < 63 {
             higher = (origin >> (index + 1)) << (index + 1);
         }
         let lower = origin & ((1 << index) - 1);
         let set = (val.into() & 0b1) << index;
-        *self = higher | set | lower;
+        higher | set | lower
     }
-    fn set_bits<T: Into<Self>>(&mut self, range: Range<usize>, val: T) {
-        let origin = *self;
+    fn set_bits<T: Into<Self>>(self, range: Range<usize>, val: T) -> Self {
+        let origin = self;
         let mut higher: u64 = 0;
         if range.end < 64 {
             higher = (origin >> range.end) << range.end;
@@ -40,7 +40,7 @@ impl Bitfields for u64 {
         let lower = origin & ((1 << range.start) - 1);
         let mask = (1 << (range.end - range.start)) - 1;
         let set = (val.into() & mask) << range.start;
-        *self = higher | set | lower;
+        higher | set | lower
     }
 }
 impl Bitfields for usize {
@@ -51,20 +51,20 @@ impl Bitfields for usize {
         let mask = (1 << (range.end - range.start)) - 1;
         (*self >> range.start) & mask
     }
-    fn set_bit<T: Into<Self>>(&mut self, index: usize, val: T) {
-        let origin = *self;
+    fn set_bit<T: Into<Self>>(self, index: usize, val: T) -> Self {
+        let origin = self;
         let higher = (origin >> (index + 1)) << (index + 1);
         let lower = origin & ((1 << index) - 1);
         let set = (val.into() & 0b1) << index;
-        *self = higher | set | lower;
+        higher | set | lower
     }
-    fn set_bits<T: Into<Self>>(&mut self, range: Range<usize>, val: T) {
-        let origin = *self;
+    fn set_bits<T: Into<Self>>(self, range: Range<usize>, val: T) -> Self {
+        let origin = self;
         let higher = (origin >> range.end) << range.end;
         let lower = origin & ((1 << range.start) - 1);
         let mask = (1 << (range.end - range.start)) - 1;
         let set = (val.into() & mask) << range.start;
-        *self = higher | set | lower;
+        higher | set | lower
     }
 }
 
@@ -91,34 +91,30 @@ mod tests {
         }
 
         {
-            let mut bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
-            bf.set_bit(60, 1u64);
+            let bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
             assert_eq!(
-                bf,
+                bf.set_bit(60, 1u64),
                 0b0001001000110100010101100111100010011010101111001101111011110000
             );
         }
         {
-            let mut bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
-            bf.set_bit(60, 0u64);
+            let bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
             assert_eq!(
-                bf,
+                bf.set_bit(60, 0u64),
                 0b0000001000110100010101100111100010011010101111001101111011110000
             );
         }
         {
-            let mut bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
-            bf.set_bits(56..61, 0b11010u64);
+            let bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
             assert_eq!(
-                bf,
+                bf.set_bits(56..61, 0b11010u64),
                 0b0001101000110100010101100111100010011010101111001101111011110000
             );
         }
         {
-            let mut bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
-            bf.set_bits(0..6, 0b11010u64);
+            let bf: u64 = 0b0001001000110100010101100111100010011010101111001101111011110000;
             assert_eq!(
-                bf,
+                bf.set_bits(0..6, 0b11010u64),
                 0b0001001000110100010101100111100010011010101111001101111011011010
             );
         }
