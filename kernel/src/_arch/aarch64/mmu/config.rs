@@ -49,7 +49,7 @@ pub(super) mod config {
         | (RECURSIVE_L1_INDEX << L3_INDEX_SHIFT);
 
     #[cfg(feature = "bsp_rpi3")]
-    pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x40000_0000;
+    pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x3FFF_FFFF;
     #[cfg(feature = "bsp_rpi4")]
     pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0xFFFF_FFFF; // we assume pi4 has 4GB memory
 

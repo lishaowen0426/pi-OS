@@ -107,7 +107,7 @@ impl L1TranslationTable {
             println!("entry {}", self[config::RECURSIVE_L1_INDEX]);
         }
 
-        // 2. Identity map before where MMIO starts using l1 1GB blocks
+        // 2. Identity map before where MMIO starts using 4kb blocks
         // On pi3, L1[MMIO_START] = 0
         // On pi4, L1[MMIO_START] = 3
         {
@@ -117,8 +117,10 @@ impl L1TranslationTable {
             let code_end = VirtualAddress::try_from(code_end_addr).unwrap();
             let bss_start = VirtualAddress::try_from(bss_start_addr).unwrap();
             let bss_end = VirtualAddress::try_from(bss_end_addr).unwrap();
-            let peripheral_start = VirtualAddress::try_from(0xFE00_0000usize).unwrap();
             let l1_page_table_start = VirtualAddress::try_from(l1_page_start_addr).unwrap();
+            let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
+            let memory_end =
+                VirtualAddress::try_from(config::PHYSICAL_MEMORY_END_INCLUSIVE + 1).unwrap();
             println!("boot stack top: {:?}", boot_stack_end);
             println!("code start: {:?}", code_start);
             println!("code end: {:?}", code_end);
@@ -126,6 +128,7 @@ impl L1TranslationTable {
             println!("bss end: {:?}", bss_end);
             println!("l1 page table: {:?}", l1_page_table_start);
             println!("MMIO start: {:?}", peripheral_start);
+            println!("MEMORY end: {:?}", memory_end);
 
             let mut free_frame = PhysicalAddress::try_from(l1_page_end_addr)
                 .unwrap()
@@ -191,16 +194,23 @@ impl L1TranslationTable {
                     Descriptor::INVALID => {
                         l3_entry = l3_entry.set_page()?;
                         l3_entry.set_attributes(mt)?;
-                        l3_entry.set_address(PhysicalAddress::try_from(va.value()).unwrap())?;
+                        l3_entry.set_address(mapped_to)?;
                         l3_table[va.level3()] = TranslationTableEntry::from(l3_entry);
                     }
                     _ => return Err(ETYPE),
                 };
 
-                println!("l3[{}] = {}", va.level3(), l3_table[va.level3()].get());
+                println!(
+                    "l3[{}] = {}  <=> {}",
+                    va.level3(),
+                    l3_table[va.level3()].get(),
+                    va
+                );
 
                 Ok(())
             };
+
+
 
             let va_start = VirtualAddress::try_from(0usize).unwrap();
             // let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
@@ -216,6 +226,14 @@ impl L1TranslationTable {
             bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
                 table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
             });
+            println!("mmio pages");
+
+            peripheral_start
+                .iter_2M_to(memory_end)
+                .unwrap()
+                .for_each(|va| {
+                    // table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
+                });
 
             println!("The next free frame = {:?}", linear_allocator.peek());
             println!("Have you mapped page table frames and mmio?");
@@ -238,7 +256,7 @@ mod tests {
             let va_peripheral = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             let va_end = VirtualAddress::try_from(0xFFFF_FFFFusize).unwrap();
             let pa_start = PhysicalAddress::default();
-            let pa_end = PhysicalAddress::try_from(0xFFFF_FFFFusize).unwrap();
+            let pa_end = PhysicalAddress::try_from(config::PHYSICAL_MEMORY_END_INCLUSIVE).unwrap();
             let l1_virt = VirtualAddress::try_from(config::L1_VIRTUAL_ADDRESS).unwrap();
             println!("Identity mapping from {} to {}", va_start, va_end);
             println!(

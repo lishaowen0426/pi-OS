@@ -774,9 +774,9 @@ mod tests {
             b.set_address(PhysicalAddress::try_from(0xFF).unwrap())
                 .expect_err("address is not aligned");
             assert_eq!(b.value(), ans);
-            b.set_address(PhysicalAddress::try_from(0b1usize << config::SHIFT_1G).unwrap())
+            b.set_address(PhysicalAddress::try_from(0b0usize << config::SHIFT_1G).unwrap())
                 .unwrap();
-            ans |= 0b1u64 << config::SHIFT_1G;
+            ans |= 0b0u64 << config::SHIFT_1G;
             assert_eq!(b.value(), ans);
         }
         {

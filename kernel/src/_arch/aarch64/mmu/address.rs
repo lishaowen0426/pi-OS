@@ -603,8 +603,9 @@ mod tests {
             );
         }
         {
-            let last_frame = (0xFFFF_FFFFusize + 1) / 4096 - 1;
-            let pa: PhysicalAddress = PhysicalAddress::try_from(0xFFFF_FFFFusize).unwrap();
+            let last_frame = (config::PHYSICAL_MEMORY_END_INCLUSIVE + 1) / 4096 - 1;
+            let pa: PhysicalAddress =
+                PhysicalAddress::try_from(config::PHYSICAL_MEMORY_END_INCLUSIVE).unwrap();
             assert_eq!(pa.to_frame(), FrameNumber::try_from(last_frame).unwrap());
         }
 
