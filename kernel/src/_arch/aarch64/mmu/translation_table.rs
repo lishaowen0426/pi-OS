@@ -210,8 +210,6 @@ impl L1TranslationTable {
                 Ok(())
             };
 
-
-
             let va_start = VirtualAddress::try_from(0usize).unwrap();
             // let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             println!("boot stack pages");
