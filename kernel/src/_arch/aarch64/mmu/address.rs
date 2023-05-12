@@ -112,6 +112,14 @@ macro_rules! impl_address {
             pub fn value(&self) -> usize {
                 self.0
             }
+
+            pub fn as_const_ptr<T>(&self) -> *const T {
+                self.0 as *const T
+            }
+            pub fn as_mut_ptr<T>(&self) -> *mut T {
+                self.0 as *mut T
+            }
+
             pub fn is_4K_aligned(&self) -> bool {
                 (self.0 & config::ALIGN_4K) == self.0
             }
@@ -169,6 +177,10 @@ macro_rules! impl_address {
 macro_rules! impl_number {
     ($name: ident) => {
         impl $name {
+            pub fn value(&self) -> usize {
+                self.0
+            }
+
             pub fn next(&mut self) -> Option<Self> {
                 let copy = *self;
                 if let Ok(n) = Self::try_from(self.0 + 1) {
@@ -207,7 +219,7 @@ impl fmt::Debug for PhysicalAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "PA = {:#018x}, frame = {}  ",
+            "PA = {:#018x}, frame = {}",
             self.0,
             AddressEdit::shift_4K(self.0)
         )

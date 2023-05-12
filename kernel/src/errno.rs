@@ -33,4 +33,6 @@ errno_decl!(
     EAGAIN => "Try again",
     EALIGN => "Address is not properly aligned",
     EOVERFLOW => "Overflow",
+    ETYPE => "Wrong Type",
+    EFRAME => "Cannot allocate frame",
 );

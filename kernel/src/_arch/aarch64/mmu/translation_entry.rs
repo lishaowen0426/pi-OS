@@ -50,6 +50,10 @@ impl fmt::Display for TranslationTableEntry<Level3> {
     }
 }
 
+pub type L1Entry = TranslationTableEntry<Level1>;
+pub type L2Entry = TranslationTableEntry<Level2>;
+pub type L3Entry = TranslationTableEntry<Level3>;
+
 #[derive(Copy, Clone)]
 pub enum Descriptor {
     L1BlockEntry(u64),
@@ -58,6 +62,53 @@ pub enum Descriptor {
     PageEntry(u64),
     INVALID,
 }
+
+#[derive(Copy, Clone)]
+pub enum MemoryType {
+    RwNormal,
+    RoNormal,
+    XNormal,
+    RwDevice,
+    RoDevice,
+    Table,
+    INVALID,
+}
+
+impl fmt::Display for MemoryType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::RwNormal => write!(f, "rwrite normal"),
+            Self::RoNormal => write!(f, "ronly normal"),
+            Self::XNormal => write!(f, "executable normal"),
+            Self::RwDevice => write!(f, "rwrite device"),
+            Self::RoDevice => write!(f, "ronly device"),
+            Self::Table => write!(f, "next-level table"),
+            Self::INVALID => write!(f, "invalid page"),
+        }
+    }
+}
+
+impl fmt::Debug for MemoryType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::RwNormal => write!(f, "rwrite normal"),
+            Self::RoNormal => write!(f, "ronly normal"),
+            Self::XNormal => write!(f, "executable normal"),
+            Self::RwDevice => write!(f, "rwrite device"),
+            Self::RoDevice => write!(f, "ronly device"),
+            Self::Table => write!(f, "next-level table"),
+            Self::INVALID => write!(f, "invalid page"),
+        }
+    }
+}
+
+pub static RWNORMAL: &MemoryType = &MemoryType::RwNormal;
+pub static RONORMAL: &MemoryType = &MemoryType::RoNormal;
+pub static XNORMAL: &MemoryType = &MemoryType::XNormal;
+pub static RWDEVICE: &MemoryType = &MemoryType::RwDevice;
+pub static RODEVICE: &MemoryType = &MemoryType::RoDevice;
+pub static TABLE_PAGE: &MemoryType = &MemoryType::Table;
+pub static INVALID_PAGE: &MemoryType = &MemoryType::INVALID;
 
 #[allow(non_snake_case, dead_code, non_upper_case_globals)]
 impl Descriptor {
@@ -81,6 +132,40 @@ impl Descriptor {
     pub const RW_DEVICE: u64 = Self::RW_device();
     pub const RO_DEVICE: u64 = Self::RO_device();
     pub const TABLE_ATTR: u64 = Self::Table_attr();
+
+    pub const BLOCK_PAGE_ATTR_MASK: u64 =
+        (0b111u64 << Self::Contiguous) | (0b1111111111u64 << Self::AttrIndx.start);
+    pub const TABLE_ATTR_MASK: u64 = 0b11111u64 << Self::PXNTable;
+
+    pub fn get_attributes(&self) -> &MemoryType {
+        match *self {
+            Self::INVALID => INVALID_PAGE,
+            Self::L1BlockEntry(e) | Self::L2BlockEntry(e) | Self::PageEntry(e) => {
+                let attr = e & Self::BLOCK_PAGE_ATTR_MASK;
+                if attr == Self::RW_NORMAL {
+                    RWNORMAL
+                } else if attr == Self::RO_NORMAL {
+                    RONORMAL
+                } else if attr == Self::X_NORMAL {
+                    XNORMAL
+                } else if attr == Self::RW_DEVICE {
+                    RWDEVICE
+                } else if attr == Self::RO_DEVICE {
+                    RODEVICE
+                } else {
+                    INVALID_PAGE
+                }
+            }
+            Self::TableEntry(e) => {
+                let attr = e & Self::TABLE_ATTR_MASK;
+                if attr == Self::TABLE_ATTR {
+                    TABLE_PAGE
+                } else {
+                    INVALID_PAGE
+                }
+            }
+        }
+    }
 
     pub fn set_l1_block(self) -> Result<Self, ErrorCode> {
         match self {
@@ -112,10 +197,6 @@ impl Descriptor {
             Self::TableEntry(e) => Ok(Self::PageEntry(e)),
             _ => Err(EINVAL),
         }
-    }
-
-    pub fn set_invalid(self) -> Self {
-        Self::INVALID
     }
 
     pub fn get_NSTable(&self) -> Option<u8> {
@@ -543,9 +624,26 @@ impl Descriptor {
             _ => Err(EINVAL),
         }
     }
+
+    pub fn set_invalid(&mut self) -> Result<(), ErrorCode> {
+        *self = Self::INVALID;
+        Ok(())
+    }
+
+    pub fn set_attributes(&mut self, mt: &MemoryType) -> Result<(), ErrorCode> {
+        match *mt {
+            MemoryType::RoNormal => self.set_RO_normal(),
+            MemoryType::RwNormal => self.set_RW_normal(),
+            MemoryType::XNormal => self.set_X_normal(),
+            MemoryType::RoDevice => self.set_RO_device(),
+            MemoryType::RwDevice => self.set_RW_device(),
+            MemoryType::Table => self.set_table_attributes(),
+            MemoryType::INVALID => self.set_invalid(),
+        }
+    }
 }
 
-impl fmt::Display for Descriptor {
+impl fmt::Debug for Descriptor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::L1BlockEntry(_) => write!(f, "L1 Block\nUXN = {:1}, PXN = {:1}, Contiguous = {:1}, nG = {:1}, AF = {:1}, SH = {:#04b}, AP = {:#04b}, NS = {:1}, AttrIndx = {:#05b}, L1 Block address = {}", self.get_UXN().unwrap(), self.get_PXN().unwrap(), self.get_Contiguous().unwrap(), self.get_nG().unwrap(), self.get_AF().unwrap(), self.get_SH().unwrap(), self.get_AP().unwrap(), self.get_NS().unwrap(), self.get_AttrIndx().unwrap(), self.get_address().unwrap()),
@@ -557,6 +655,45 @@ impl fmt::Display for Descriptor {
     }
 }
 
+impl fmt::Display for Descriptor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::L1BlockEntry(_) => {
+                write!(
+                    f,
+                    "L1 {} block, address = {}",
+                    self.get_attributes(),
+                    self.get_address().unwrap()
+                )
+            }
+            Self::L2BlockEntry(_) => {
+                write!(
+                    f,
+                    "L2 {} block, address = {}",
+                    self.get_attributes(),
+                    self.get_address().unwrap()
+                )
+            }
+            Self::PageEntry(_) => {
+                write!(
+                    f,
+                    "{} page, address = {}",
+                    self.get_attributes(),
+                    self.get_address().unwrap()
+                )
+            }
+            Self::TableEntry(_) => {
+                write!(
+                    f,
+                    "{}, address = {}",
+                    self.get_attributes(),
+                    self.get_address().unwrap()
+                )
+            }
+            Self::INVALID => write!(f, "Invalid descriptor"),
+        }
+    }
+}
 impl<L> TranslationTableEntry<L> {
     pub fn is_valid(&self) -> bool {
         self.entry.get_bit(0) == 1
@@ -626,11 +763,11 @@ mod tests {
         {}
         // Level 1 block
         {
-            let mut e: TranslationTableEntry<Level1> = Default::default();
+            let e: TranslationTableEntry<Level1> = Default::default();
             assert!(!e.is_valid());
             let mut ans = 0u64;
             let mut b = e.get().set_l1_block().unwrap();
-            b.set_RW_normal().unwrap();
+            b.set_attributes(RWNORMAL).unwrap();
 
             ans = Descriptor::RW_NORMAL | 0b01;
             assert_eq!(b.value(), ans);
@@ -643,11 +780,11 @@ mod tests {
             assert_eq!(b.value(), ans);
         }
         {
-            let mut e: TranslationTableEntry<Level2> = Default::default();
+            let e: TranslationTableEntry<Level2> = Default::default();
             assert!(!e.is_valid());
             let mut ans = 0u64;
             let mut b = e.get().set_l2_block().unwrap();
-            b.set_RO_normal().unwrap();
+            b.set_attributes(RONORMAL).unwrap();
 
             ans = Descriptor::RO_NORMAL | 0b01;
             assert_eq!(b.value(), ans);
