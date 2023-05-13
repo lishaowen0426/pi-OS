@@ -55,13 +55,9 @@ unsafe fn kernel_main() -> ! {
 
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
-    println!(
-        "boot stack: {:p}",
-        &__boot_core_stack_end_exclusive as *const u8
-    );
-    println!("page table: {:x}", TTBR0_EL1.get_baddr());
 
-    memory::MMU.config_tcr_el1().unwrap();
+    memory::MMU.config().unwrap();
+    println!("Working!");
 
     loop {}
 }

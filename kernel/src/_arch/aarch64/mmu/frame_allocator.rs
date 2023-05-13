@@ -1,5 +1,9 @@
 use super::address::*;
-use crate::errno::*;
+use crate::{errno::*, println};
+
+extern "C" {
+    fn clear_frame(frame: usize);
+}
 
 pub trait FrameAllocator {
     fn frame_alloc(&mut self) -> Option<FrameNumber>;
@@ -12,6 +16,9 @@ pub struct LinearFrameAllocator(Option<FrameNumber>);
 impl FrameAllocator for LinearFrameAllocator {
     fn frame_alloc(&mut self) -> Option<FrameNumber> {
         if let Some(ref mut f) = self.0 {
+            unsafe {
+                clear_frame(f.to_address().value());
+            }
             f.next()
         } else {
             None

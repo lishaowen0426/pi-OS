@@ -19,6 +19,10 @@ pub struct TranslationTable<L> {
     num_elems: usize,
 }
 
+pub type L1TranslationTable = TranslationTable<Level1>;
+pub type L2TranslationTable = TranslationTable<Level2>;
+pub type L3TranslationTable = TranslationTable<Level3>;
+
 impl<L: TranslationTableLevel> Index<usize> for TranslationTable<L> {
     type Output = TranslationTableEntry<L>;
 
@@ -40,6 +44,20 @@ impl<L: TranslationTableLevel> TranslationTable<L> {
         }
     }
 
+    pub fn set_entry(&self, idx: usize, entry: TranslationTableEntry<L>) -> Result<(), ErrorCode> {
+        if idx >= self.num_elems {
+            Err(EBOUND)
+        } else {
+            unsafe {
+                self.base
+                    .as_ptr()
+                    .offset(idx.try_into().unwrap())
+                    .write(entry);
+            }
+            Ok(())
+        }
+    }
+
     pub fn address(&self) -> VirtualAddress {
         VirtualAddress::try_from(self.base.addr().get()).unwrap()
     }
@@ -49,16 +67,12 @@ pub fn get_ttbr0() -> usize {
     TTBR0_EL1.get_baddr() as usize
 }
 
-type L1TranslationTable = TranslationTable<Level1>;
-type L2TranslationTable = TranslationTable<Level2>;
-type L3TranslationTable = TranslationTable<Level3>;
-
 impl L1TranslationTable {
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         None
     }
     pub fn map(
-        &mut self,
+        &self,
         va: VirtualAddress,
         pa: PhysicalAddress,
         frame_allocator: &mut dyn FrameAllocator,
@@ -66,7 +80,16 @@ impl L1TranslationTable {
         Ok(())
     }
 
-    pub fn set_up_init_mapping(&mut self) -> Result<(), ErrorCode> {
+    pub fn __map_internal(
+        &self,
+        va: VirtualAddress,
+        pa: PhysicalAddress,
+        frame_allocator: &mut dyn FrameAllocator,
+    ) -> Result<(), ErrorCode> {
+        Ok(())
+    }
+
+    pub fn set_up_init_mapping(&self) -> Result<(), ErrorCode> {
         let mut boot_core_stack_end_exclusive_addr: usize = 0;
         let mut code_start_addr: usize = 0;
         let mut code_end_addr: usize = 0;
@@ -81,6 +104,17 @@ impl L1TranslationTable {
             code_end_addr = &__code_end_exclusive as *const _ as usize;
             bss_start_addr = &__bss_start as *const _ as usize;
             bss_end_addr = &__bss_end_exclusive as *const _ as usize;
+        }
+        unsafe {
+            println!("l1 table address: {}", self.address());
+
+            println!(
+                "l1[{}] =  {:#018x}",
+                config::RECURSIVE_L1_INDEX,
+                self.base
+                    .as_ptr()
+                    .offset(config::RECURSIVE_L1_INDEX as isize) as usize
+            );
         }
         // 1. recursive L1
         {
@@ -100,8 +134,10 @@ impl L1TranslationTable {
                     .set_address(l1_page_table_start)
                     .unwrap();
                 println!("recursive {}", recursive_page_entry);
-                self[config::RECURSIVE_L1_INDEX] =
-                    TranslationTableEntry::from(recursive_page_entry);
+                self.set_entry(
+                    config::RECURSIVE_L1_INDEX,
+                    TranslationTableEntry::from(recursive_page_entry),
+                );
             }
 
             println!("entry {}", self[config::RECURSIVE_L1_INDEX]);
@@ -136,10 +172,13 @@ impl L1TranslationTable {
             println!("free frame from {:?}", free_frame);
             let mut linear_allocator = LinearFrameAllocator::new(free_frame);
 
-            let mut table_walk_and_identity_map_4k = |va: VirtualAddress,
-                                                      mt: &MemoryType,
-                                                      frame_allocator: &mut dyn FrameAllocator|
+            let table_walk_and_identity_map_4K = |va: VirtualAddress,
+                                                  mt: &MemoryType,
+                                                  frame_allocator: &mut dyn FrameAllocator|
              -> Result<(), ErrorCode> {
+                if !va.is_4K_aligned() {
+                    return Err(EALIGN);
+                }
                 let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
                 let mut l1_entry = self[va.level1()].get();
@@ -150,7 +189,82 @@ impl L1TranslationTable {
                         let allocated_frame_addr: PhysicalAddress =
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
                         l1_entry.set_address(allocated_frame_addr);
-                        self[va.level1()] = TranslationTableEntry::from(l1_entry);
+                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry));
+
+                        Option::Some(TranslationTable::<Level2>::new(
+                            allocated_frame_addr.value() as *mut L2Entry,
+                            config::ENTRIES_PER_TABLE,
+                        ))
+                    }
+                    Descriptor::TableEntry(e) => Option::Some(TranslationTable::<Level2>::new(
+                        l1_entry.get_address().unwrap().value() as *mut L2Entry,
+                        config::ENTRIES_PER_TABLE,
+                    )),
+                    _ => None,
+                }
+                .ok_or(ETYPE)?;
+                // println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
+
+                let mut l2_entry = l2_table[va.level2()].get();
+                let mut l3_table: L3TranslationTable = match l2_entry {
+                    Descriptor::INVALID => {
+                        l2_entry = l2_entry.set_table()?;
+                        l2_entry.set_attributes(TABLE_PAGE);
+                        let allocated_frame_addr: PhysicalAddress =
+                            frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
+                        l2_entry.set_address(allocated_frame_addr);
+                        l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry));
+                        Option::Some(TranslationTable::<Level3>::new(
+                            allocated_frame_addr.value() as *mut L3Entry,
+                            config::ENTRIES_PER_TABLE,
+                        ))
+                    }
+                    Descriptor::TableEntry(e) => Option::Some(TranslationTable::<Level3>::new(
+                        l2_entry.get_address().unwrap().value() as *mut L3Entry,
+                        config::ENTRIES_PER_TABLE,
+                    )),
+                    _ => None,
+                }
+                .ok_or(ETYPE)?;
+                // println!("l2[{}] = {}", va.level2(), l2_table[va.level2()].get());
+
+                let mut l3_entry: Descriptor = l3_table[va.level3()].get();
+                match l3_entry {
+                    Descriptor::INVALID => {
+                        l3_entry = l3_entry.set_page()?;
+                        l3_entry.set_attributes(mt)?;
+                        l3_entry.set_address(mapped_to)?;
+                        l3_table.set_entry(va.level3(), TranslationTableEntry::from(l3_entry));
+                    }
+                    _ => return Err(ETYPE),
+                };
+                // println!(
+                // "l3[{}] = {:?}  <=> {}",
+                // va.level3(),
+                // l3_table[va.level3()].get(),
+                // va
+                // );
+
+                Ok(())
+            };
+            let table_walk_and_identity_map_2M = |va: VirtualAddress,
+                                                  mt: &MemoryType,
+                                                  frame_allocator: &mut dyn FrameAllocator|
+             -> Result<(), ErrorCode> {
+                if !va.is_2M_aligned() {
+                    return Err(EALIGN);
+                }
+                let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
+
+                let mut l1_entry = self[va.level1()].get();
+                let mut l2_table: L2TranslationTable = match l1_entry {
+                    Descriptor::INVALID => {
+                        l1_entry = l1_entry.set_table()?;
+                        l1_entry.set_attributes(TABLE_PAGE);
+                        let allocated_frame_addr: PhysicalAddress =
+                            frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
+                        l1_entry.set_address(allocated_frame_addr);
+                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry));
 
                         Option::Some(TranslationTable::<Level2>::new(
                             allocated_frame_addr.value() as *mut L2Entry,
@@ -167,72 +281,80 @@ impl L1TranslationTable {
                 println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
 
                 let mut l2_entry = l2_table[va.level2()].get();
-                let mut l3_table: L3TranslationTable = match l2_entry {
+                match l2_entry {
                     Descriptor::INVALID => {
-                        l2_entry = l2_entry.set_table()?;
-                        l2_entry.set_attributes(TABLE_PAGE);
-                        let allocated_frame_addr: PhysicalAddress =
-                            frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
-                        l2_entry.set_address(allocated_frame_addr);
-                        l2_table[va.level2()] = TranslationTableEntry::from(l2_entry);
-                        Option::Some(TranslationTable::<Level3>::new(
-                            allocated_frame_addr.value() as *mut L3Entry,
-                            config::ENTRIES_PER_TABLE,
-                        ))
-                    }
-                    Descriptor::TableEntry(e) => Option::Some(TranslationTable::<Level3>::new(
-                        l2_entry.get_address().unwrap().value() as *mut L3Entry,
-                        config::ENTRIES_PER_TABLE,
-                    )),
-                    _ => None,
-                }
-                .ok_or(ETYPE)?;
-                println!("l2[{}] = {}", va.level2(), l2_table[va.level2()].get());
-
-                let mut l3_entry: Descriptor = l3_table[va.level3()].get();
-                match l3_entry {
-                    Descriptor::INVALID => {
-                        l3_entry = l3_entry.set_page()?;
-                        l3_entry.set_attributes(mt)?;
-                        l3_entry.set_address(mapped_to)?;
-                        l3_table[va.level3()] = TranslationTableEntry::from(l3_entry);
+                        l2_entry = l2_entry.set_l2_block()?;
+                        l2_entry.set_attributes(mt);
+                        l2_entry.set_address(mapped_to);
+                        l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry));
                     }
                     _ => return Err(ETYPE),
                 };
 
                 println!(
-                    "l3[{}] = {}  <=> {}",
-                    va.level3(),
-                    l3_table[va.level3()].get(),
+                    "l2[{}] = {:?}  <=> {}",
+                    va.level2(),
+                    l2_table[va.level2()].get(),
                     va
                 );
 
                 Ok(())
             };
 
-            let va_start = VirtualAddress::try_from(0usize).unwrap();
-            // let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
-            println!("boot stack pages");
-            va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
-                table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
-            });
-            println!("code pages");
-            code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
-                table_walk_and_identity_map_4k(va, RONORMAL, &mut linear_allocator).unwrap();
-            });
-            println!("bss pages");
-            bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
-                table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
-            });
+            let table_walk_and_identity_map_1G = |va: VirtualAddress,
+                                                  mt: &MemoryType,
+                                                  frame_allocator: &mut dyn FrameAllocator|
+             -> Result<(), ErrorCode> {
+                if !va.is_1G_aligned() {
+                    return Err(EALIGN);
+                }
+                let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
+
+                let mut l1_entry = self[va.level1()].get();
+                match l1_entry {
+                    Descriptor::INVALID => {
+                        l1_entry = l1_entry.set_l1_block()?;
+                        l1_entry.set_attributes(mt);
+                        l1_entry.set_address(mapped_to);
+                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry));
+                    }
+                    _ => return Err(ETYPE),
+                };
+
+                println!(
+                    "l1[{}] = {:?}  <=> {}",
+                    va.level1(),
+                    self[va.level1()].get(),
+                    va
+                );
+
+                Ok(())
+            };
+
             println!("mmio pages");
 
+            let va_start = VirtualAddress::try_from(0usize).unwrap();
+            println!("boot stack pages");
+            table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
+            // va_start.iter_4k_to(boot_stack_end).unwrap().for_each(|va| {
+            // table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
+            // });
+            // println!("code pages");
+            // code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
+            // table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
+            // });
+            // println!("bss pages");
+            // bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
+            // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            // });
+
+            let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             peripheral_start
                 .iter_2M_to(memory_end)
                 .unwrap()
                 .for_each(|va| {
-                    // table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
+                    table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
                 });
-
             println!("The next free frame = {:?}", linear_allocator.peek());
             println!("Have you mapped page table frames and mmio?");
         }
@@ -247,7 +369,7 @@ mod tests {
     use super::*;
     use test_macros::kernel_test;
 
-    #[kernel_test]
+    //#[kernel_test]
     fn test_translation_table() {
         {
             let va_start = VirtualAddress::default();

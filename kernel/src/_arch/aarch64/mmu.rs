@@ -2,8 +2,8 @@ use crate::{
     errno::{ErrorCode, EAGAIN},
     println,
 };
-use aarch64_cpu::registers::*;
-use tock_registers::interfaces::{Readable, Writeable};
+use aarch64_cpu::{asm::barrier,registers::*};
+use tock_registers::interfaces::{Readable, Writeable, ReadWriteable};
 
 #[path = "mmu/address.rs"]
 mod address;
@@ -18,6 +18,8 @@ mod mmu_config;
 mod frame_allocator;
 
 use mmu_config::config;
+use translation_table::*;
+use translation_entry::*;
 
 
 
@@ -32,7 +34,7 @@ impl MemoryManagementUnit {
         ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::TGran4) == 0
     }
 
-    pub fn config_tcr_el1(&self) -> Result<(), ErrorCode> {
+    fn config_tcr_el1(&self) -> Result<(), ErrorCode> {
         // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
         // currently just identity map
         let t0sz: u64 = 16 + 9; // start from level 1
@@ -64,30 +66,59 @@ impl MemoryManagementUnit {
         Ok(())
     }
 
-    pub fn config_mair_el1(&self) {
+    fn config_mair_el1(&self) {
 
         // Be careful when change this!
         // We use the attribute index in some places when we set the block/page table entry AttrIdx
         // Remember to change those if MAIR_EL1 is modified.
+        
         MAIR_EL1.write(
             MAIR_EL1::Attr1_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr1_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
         );
+        /*
+        MAIR_EL1.write(
+            MAIR_EL1::Attr1_Normal_Outer::NonCacheable
+                + MAIR_EL1::Attr1_Normal_Inner::NonCacheable
+                + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
+        );
+        */
     }
 
     pub fn config(&self) -> Result<(), ErrorCode>{
         //config tcr
+        self.config_tcr_el1().unwrap();
         //config mair
+        self.config_mair_el1();
         //set up initial mapping
         //
+        let mut l1_table: L1TranslationTable =
+            TranslationTable::new(get_ttbr0() as *mut L1Entry, config::ENTRIES_PER_TABLE);
+        l1_table.set_up_init_mapping();
         //barrier
+        barrier::isb(barrier::SY);
+        println!("before enable mmu");
         // Enable the MMU and turn on data and instruction caching.
-        //SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
+        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
         ////barrier
+        barrier::isb(barrier::SY);
+        println!("after enable mmu");
+        ///
 
         Ok(())
     }
 }
 
 pub static MMU: MemoryManagementUnit = MemoryManagementUnit::new();
+
+#[cfg(test)] 
+#[allow(unused_imports,unused_variables,dead_code)]
+ mod tests{
+ use super::*;
+use test_macros::kernel_test; 
+ #[kernel_test] 
+ fn test_mmu(){
+        MMU.config().unwrap();
+    }
+} 

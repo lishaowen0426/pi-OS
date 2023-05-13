@@ -1,5 +1,5 @@
 use super::{address::*, config};
-use crate::{errno::*, utils::bitfields::Bitfields};
+use crate::{errno::*, println, utils::bitfields::Bitfields};
 use core::{fmt, marker::PhantomData, ops::Range, ptr};
 
 #[derive(Default)]
@@ -68,6 +68,7 @@ pub enum MemoryType {
     RwNormal,
     RoNormal,
     XNormal,
+    RWXNormal,
     RwDevice,
     RoDevice,
     Table,
@@ -80,6 +81,7 @@ impl fmt::Display for MemoryType {
             Self::RwNormal => write!(f, "rwrite normal"),
             Self::RoNormal => write!(f, "ronly normal"),
             Self::XNormal => write!(f, "executable normal"),
+            Self::RWXNormal => write!(f, "rwexecutable normal(only for debug)"),
             Self::RwDevice => write!(f, "rwrite device"),
             Self::RoDevice => write!(f, "ronly device"),
             Self::Table => write!(f, "next-level table"),
@@ -94,6 +96,7 @@ impl fmt::Debug for MemoryType {
             Self::RwNormal => write!(f, "rwrite normal"),
             Self::RoNormal => write!(f, "ronly normal"),
             Self::XNormal => write!(f, "executable normal"),
+            Self::RWXNormal => write!(f, "rwexecutable normal(only for debug)"),
             Self::RwDevice => write!(f, "rwrite device"),
             Self::RoDevice => write!(f, "ronly device"),
             Self::Table => write!(f, "next-level table"),
@@ -105,6 +108,7 @@ impl fmt::Debug for MemoryType {
 pub static RWNORMAL: &MemoryType = &MemoryType::RwNormal;
 pub static RONORMAL: &MemoryType = &MemoryType::RoNormal;
 pub static XNORMAL: &MemoryType = &MemoryType::XNormal;
+pub static RWXNORMAL: &MemoryType = &MemoryType::RWXNormal;
 pub static RWDEVICE: &MemoryType = &MemoryType::RwDevice;
 pub static RODEVICE: &MemoryType = &MemoryType::RoDevice;
 pub static TABLE_PAGE: &MemoryType = &MemoryType::Table;
@@ -129,6 +133,7 @@ impl Descriptor {
     pub const RW_NORMAL: u64 = Self::RW_normal();
     pub const RO_NORMAL: u64 = Self::RO_normal();
     pub const X_NORMAL: u64 = Self::X_normal();
+    pub const RWX_NORMAL: u64 = Self::RWX_normal();
     pub const RW_DEVICE: u64 = Self::RW_device();
     pub const RO_DEVICE: u64 = Self::RO_device();
     pub const TABLE_ATTR: u64 = Self::Table_attr();
@@ -152,6 +157,8 @@ impl Descriptor {
                     RWDEVICE
                 } else if attr == Self::RO_DEVICE {
                     RODEVICE
+                } else if attr == Self::RWX_NORMAL {
+                    RWXNORMAL
                 } else {
                     INVALID_PAGE
                 }
@@ -488,6 +495,35 @@ impl Descriptor {
             _ => Err(EINVAL),
         }
     }
+    const fn RWX_normal() -> u64 {
+        (0b1 << Self::AttrIndx.start) // Normal Memory
+            | (0b0 << Self::NS) // Alway secure
+            | (0b00 << Self::AP.start) //Read Write
+            | (0b11 << Self::SH.start) //Inner Shareable
+            | (0b1 << Self::AF) //Accessed
+            | (0b0 << Self::nG) //Always global
+            | (0b0 << Self::Contiguous) //Non contiguous
+            | (0b0 << Self::PXN) // Executable at EL1
+            | (0b1 << Self::UXN) // Never Executable at EL0
+    }
+
+    pub fn set_RWX_normal(&mut self) -> Result<(), ErrorCode> {
+        match *self {
+            Self::L1BlockEntry(e) => {
+                *self = Self::L1BlockEntry(e | Self::RWX_NORMAL);
+                Ok(())
+            }
+            Self::L2BlockEntry(e) => {
+                *self = Self::L2BlockEntry(e | Self::RWX_NORMAL);
+                Ok(())
+            }
+            Self::PageEntry(e) => {
+                *self = Self::PageEntry(e | Self::RWX_NORMAL);
+                Ok(())
+            }
+            _ => Err(EINVAL),
+        }
+    }
     const fn RO_normal() -> u64 {
         (0b1 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
@@ -635,6 +671,7 @@ impl Descriptor {
             MemoryType::RoNormal => self.set_RO_normal(),
             MemoryType::RwNormal => self.set_RW_normal(),
             MemoryType::XNormal => self.set_X_normal(),
+            MemoryType::RWXNormal => self.set_RWX_normal(),
             MemoryType::RoDevice => self.set_RO_device(),
             MemoryType::RwDevice => self.set_RW_device(),
             MemoryType::Table => self.set_table_attributes(),

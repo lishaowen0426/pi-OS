@@ -69,6 +69,16 @@ _start:
 	wfe
 	b	.L_parking_loop
 
+//x0 start address
+.global clear_frame
+clear_frame:
+    add x1, x0, #4096
+1:
+    stp         xzr, xzr, [x0], #16
+    cmp         x0, x1
+    b.ne        1b
+    ret
+
 .size	_start, . - _start
 .type	_start, function
 .global	_start_rust
