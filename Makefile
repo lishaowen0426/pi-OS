@@ -264,7 +264,7 @@ openocd:
 
 
 jtagboot: 
-	@$(DOCKER_JTAGBOOT) $(EXEC_MINIPUSH) $(DEV_SERIAL) $(JTAG_BOOT_IMAGE)
+	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(JTAG_BOOT_IMAGE)
 
 test_unit: FEATURES := --features test_build --features bsp_rpi3
 
