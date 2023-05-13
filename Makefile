@@ -94,6 +94,8 @@ RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
 	-C opt-level=0                               \
 	-C debuginfo=2                               
 
+RUSTFLAGS_DEBUG =  -C opt-level=0                  \
+	-C debuginfo=2                               
 
 RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
 
@@ -252,7 +254,7 @@ chainboot : $(KERNEL_BIN)
 	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
 
-gdb: $(KERNEL_ELF)
+gdb: $(KERNEL_BIN)
 	$(call color_header, "Launching GDB")
 	@$(DOCKER_GDB) gdb-multiarch -q $(KERNEL_ELF)
 
@@ -261,8 +263,8 @@ openocd:
 	@$(DOCKER_OPENOCD) openocd $(OPENOCD_ARG)
 
 
-jtagboot:
-	@$(DOCKER_JTAGBOOT) $(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
+jtagboot: 
+	@$(DOCKER_JTAGBOOT) $(EXEC_MINIPUSH) $(DEV_SERIAL) $(JTAG_BOOT_IMAGE)
 
 test_unit: FEATURES := --features test_build --features bsp_rpi3
 
@@ -293,13 +295,13 @@ endef
 test_unit:
 	$(call color_header, "Compiling unit test(s) - $(BSP)")
 	$(call test_prepare)
-	RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) 
+	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) 
 
 
 
 $(KERNEL_LIB): $(KERNEL_ELF_DEPS) 
 	$(call color_header, "Compiling kernel static lib - $(BSP)")
-	$(RUSTC_LIB_CMD)
+	@RUSTFLAGS="$(RUSFTFLAGS_DEBUG)" $(RUSTC_LIB_CMD)
 
 $(ASSEMBLED_BOOT): $(BOOT_ASM)
 	$(call color_header, "Assembling boot.s")
