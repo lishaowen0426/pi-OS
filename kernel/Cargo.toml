@@ -4,8 +4,7 @@ version = "0.1.0"
 authors = ["Li Shaowen"]
 edition = "2021"
 
-[profile.release]
-lto = true
+
 
 
 [features]

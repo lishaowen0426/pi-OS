@@ -67,6 +67,7 @@ pub fn get_ttbr0() -> usize {
     TTBR0_EL1.get_baddr() as usize
 }
 
+#[allow(unused_variables)]
 impl L1TranslationTable {
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         None
@@ -137,7 +138,7 @@ impl L1TranslationTable {
                 self.set_entry(
                     config::RECURSIVE_L1_INDEX,
                     TranslationTableEntry::from(recursive_page_entry),
-                );
+                )?;
             }
 
             println!("entry {}", self[config::RECURSIVE_L1_INDEX]);
@@ -182,21 +183,26 @@ impl L1TranslationTable {
                 let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
                 let mut l1_entry = self[va.level1()].get();
-                let mut l2_table: L2TranslationTable = match l1_entry {
+                let l2_table: L2TranslationTable = match l1_entry {
                     Descriptor::INVALID => {
                         l1_entry = l1_entry.set_table()?;
-                        l1_entry.set_attributes(TABLE_PAGE);
+                        l1_entry.set_attributes(TABLE_PAGE)?;
                         let allocated_frame_addr: PhysicalAddress =
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
-                        l1_entry.set_address(allocated_frame_addr);
-                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry));
+                        l1_entry.set_address(allocated_frame_addr)?;
+                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
+                        println!(
+                            "New table: l1[{}] = {}",
+                            va.level1(),
+                            self[va.level1()].get()
+                        );
 
                         Option::Some(TranslationTable::<Level2>::new(
                             allocated_frame_addr.value() as *mut L2Entry,
                             config::ENTRIES_PER_TABLE,
                         ))
                     }
-                    Descriptor::TableEntry(e) => Option::Some(TranslationTable::<Level2>::new(
+                    Descriptor::TableEntry(_) => Option::Some(TranslationTable::<Level2>::new(
                         l1_entry.get_address().unwrap().value() as *mut L2Entry,
                         config::ENTRIES_PER_TABLE,
                     )),
@@ -206,20 +212,25 @@ impl L1TranslationTable {
                 // println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
 
                 let mut l2_entry = l2_table[va.level2()].get();
-                let mut l3_table: L3TranslationTable = match l2_entry {
+                let l3_table: L3TranslationTable = match l2_entry {
                     Descriptor::INVALID => {
                         l2_entry = l2_entry.set_table()?;
-                        l2_entry.set_attributes(TABLE_PAGE);
+                        l2_entry.set_attributes(TABLE_PAGE)?;
                         let allocated_frame_addr: PhysicalAddress =
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
-                        l2_entry.set_address(allocated_frame_addr);
-                        l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry));
+                        l2_entry.set_address(allocated_frame_addr)?;
+                        l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry))?;
+                        println!(
+                            "New table: l2[{}] = {}",
+                            va.level2(),
+                            l2_table[va.level2()].get()
+                        );
                         Option::Some(TranslationTable::<Level3>::new(
                             allocated_frame_addr.value() as *mut L3Entry,
                             config::ENTRIES_PER_TABLE,
                         ))
                     }
-                    Descriptor::TableEntry(e) => Option::Some(TranslationTable::<Level3>::new(
+                    Descriptor::TableEntry(_) => Option::Some(TranslationTable::<Level3>::new(
                         l2_entry.get_address().unwrap().value() as *mut L3Entry,
                         config::ENTRIES_PER_TABLE,
                     )),
@@ -234,7 +245,7 @@ impl L1TranslationTable {
                         l3_entry = l3_entry.set_page()?;
                         l3_entry.set_attributes(mt)?;
                         l3_entry.set_address(mapped_to)?;
-                        l3_table.set_entry(va.level3(), TranslationTableEntry::from(l3_entry));
+                        l3_table.set_entry(va.level3(), TranslationTableEntry::from(l3_entry))?;
                     }
                     _ => return Err(ETYPE),
                 };
@@ -257,36 +268,36 @@ impl L1TranslationTable {
                 let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
                 let mut l1_entry = self[va.level1()].get();
-                let mut l2_table: L2TranslationTable = match l1_entry {
+                let l2_table: L2TranslationTable = match l1_entry {
                     Descriptor::INVALID => {
                         l1_entry = l1_entry.set_table()?;
-                        l1_entry.set_attributes(TABLE_PAGE);
+                        l1_entry.set_attributes(TABLE_PAGE)?;
                         let allocated_frame_addr: PhysicalAddress =
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
-                        l1_entry.set_address(allocated_frame_addr);
-                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry));
+                        l1_entry.set_address(allocated_frame_addr)?;
+                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
 
                         Option::Some(TranslationTable::<Level2>::new(
                             allocated_frame_addr.value() as *mut L2Entry,
                             config::ENTRIES_PER_TABLE,
                         ))
                     }
-                    Descriptor::TableEntry(e) => Option::Some(TranslationTable::<Level2>::new(
+                    Descriptor::TableEntry(_) => Option::Some(TranslationTable::<Level2>::new(
                         l1_entry.get_address().unwrap().value() as *mut L2Entry,
                         config::ENTRIES_PER_TABLE,
                     )),
                     _ => None,
                 }
                 .ok_or(ETYPE)?;
-                println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
+                // println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
 
                 let mut l2_entry = l2_table[va.level2()].get();
                 match l2_entry {
                     Descriptor::INVALID => {
                         l2_entry = l2_entry.set_l2_block()?;
-                        l2_entry.set_attributes(mt);
-                        l2_entry.set_address(mapped_to);
-                        l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry));
+                        l2_entry.set_attributes(mt)?;
+                        l2_entry.set_address(mapped_to)?;
+                        l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry))?;
                     }
                     _ => return Err(ETYPE),
                 };
@@ -314,9 +325,9 @@ impl L1TranslationTable {
                 match l1_entry {
                     Descriptor::INVALID => {
                         l1_entry = l1_entry.set_l1_block()?;
-                        l1_entry.set_attributes(mt);
-                        l1_entry.set_address(mapped_to);
-                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry));
+                        l1_entry.set_attributes(mt)?;
+                        l1_entry.set_address(mapped_to)?;
+                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
                     }
                     _ => return Err(ETYPE),
                 };
@@ -331,11 +342,11 @@ impl L1TranslationTable {
                 Ok(())
             };
 
-            println!("mmio pages");
-
             let va_start = VirtualAddress::try_from(0usize).unwrap();
             println!("boot stack pages");
+            // va_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
             table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
+            //});
             // va_start.iter_4k_to(boot_stack_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
             // });
@@ -347,13 +358,14 @@ impl L1TranslationTable {
             // bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
             // });
+            println!("mmio pages");
 
             let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             peripheral_start
-                .iter_2M_to(memory_end)
+                .iter_4K_to(memory_end)
                 .unwrap()
                 .for_each(|va| {
-                    table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
+                    table_walk_and_identity_map_4K(va, RWDEVICE, &mut linear_allocator).unwrap();
                 });
             println!("The next free frame = {:?}", linear_allocator.peek());
             println!("Have you mapped page table frames and mmio?");

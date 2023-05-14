@@ -10,11 +10,12 @@ include ./common/operating_system.mk
 ## Optional, user-provided configuration values
 ##--------------------------------------------------------------------------------------------------
 
-# Default to the RPi3.
-BSP ?= rpi4
+BSP := rpi4
+
+PROFILE := debug
 
 ifeq ($(shell uname -s),Linux)
-	DEV_SERIAL = /dev/ttyUSB1
+	DEV_SERIAL = /dev/ttyUSB0
 	DOCKER_CMD_DEV = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_DEV)
     DOCKER_MINITERM = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
  	DOCKER_CHAINBOOT = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
@@ -34,7 +35,7 @@ TARGET            = aarch64-unknown-none-softfloat
 KERNEL_BIN        = kernel8.img
 QEMU_BINARY       = qemu-system-aarch64
 QEMU_MACHINE_TYPE = raspi3b
-QEMU_RELEASE_ARGS = -serial stdio -display none -machine $(QEMU_MACHINE_TYPE) 
+QEMU_RELEASE_ARGS = -serial stdio -display none -machine $(QEMU_MACHINE_TYPE)      
 QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
 OBJDUMP_BINARY    = aarch64-none-elf-objdump
 NM_BINARY         = aarch64-none-elf-nm
@@ -63,9 +64,9 @@ endif
 export LD_SCRIPT_FOLDER
 
 BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/boot.s
-ASSEMBLED_BOOT = ./target/$(TARGET)/release/boot.o
+ASSEMBLED_BOOT = ./target/$(TARGET)/boot.o
 
-KERNEL_LIB = ./target/$(TARGET)/release/liblibkernel.a
+KERNEL_LIB = ./target/$(TARGET)/$(PROFILE)/liblibkernel.a
 KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
 
 
@@ -77,7 +78,7 @@ KERNEL_MANIFEST      = $(shell pwd)/kernel/Cargo.toml
 KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
-KERNEL_ELF      = target/$(TARGET)/release/kernel
+KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/kernel
 # This parses cargo's dep-info file.
 # https://doc.rust-lang.org/cargo/guide/build-cache.html#dep-info-files
 KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
@@ -90,26 +91,28 @@ KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST)
 RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
     -C link-arg=--library-path=$(LD_SCRIPT_FOLDER) \
     -C link-arg=--script=$(KERNEL_LINKER_SCRIPT) \
-	--emit asm                                   \
-	-C opt-level=0                               \
-	-C debuginfo=2                               
+	--emit asm                                   
 
-RUSTFLAGS_DEBUG =  -C opt-level=0                  \
-	-C debuginfo=2                               
+
+RUSTFLAGS_DEBUG =  -C opt-level=0   -C debuginfo=2                               
 
 RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
 
 FEATURES      = --features bsp_$(BSP)
 COMPILER_ARGS = --target=$(TARGET) \
     $(FEATURES)                    \
-	--release                      \
-	--lib
+	--lib  
+
+
+##ifeq ($(PROFILE),release) 
+##	COMPILER_ARGS += --release
+##endif
 
 RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir 
     
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
-RUSTC_LIB_CMD = cargo rustc   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)
+RUSTC_LIB_CMD = cargo rustc --verbose   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS) 
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -154,7 +157,7 @@ endif
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc qemu clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_LIB) 
+.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) 
 
 
 all: $(KERNEL_BIN)
@@ -185,16 +188,20 @@ miniterm:
 ##------------------------------------------------------------------------------
 ifeq ($(QEMU_MACHINE_TYPE),) # QEMU is not supported for the board.
 
-qemu qemuasm:
+qemu qemuasm qemuwait:
 	$(call color_header, "$(QEMU_MISSING_STRING)")
 
 else # QEMU is supported.
 
-qemu: FEATURES := --features build_qemu
 
-qemu: qemu_exec
+qemuwait: QEMU_RELEASE_ARGS += -s -S  
+qemuwait: do_qemu
 
-qemu_exec: $(KERNEL_BIN)
+qemu: do_qemu
+
+do_qemu: FEATURES := --features build_qemu
+
+do_qemu: $(KERNEL_BIN)
 	$(call color_header, "Launching QEMU")
 	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN) 
 
@@ -220,17 +227,14 @@ clean:
 ##------------------------------------------------------------------------------
 readelf: $(KERNEL_ELF)
 	$(call color_header, "Launching readelf")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_LIB) 
+	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_ELF) 
 
 ##------------------------------------------------------------------------------
 ## Run objdump
 ##------------------------------------------------------------------------------
 objdump: $(KERNEL_ELF)
 	$(call color_header, "Launching objdump")
-	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) --disassemble --demangle \
-                --section .rodata   \
-                --section .bss   \
-                $(KERNEL_ELF) | rustfilt
+	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY)  -h  $(KERNEL_ELF)
 
 
 #objdump: $(KERNEL_ELF)
@@ -249,8 +253,11 @@ mir: ${KERNEL_ELF_DEPS}
 	$(call color_header, "Generating Rust mir")
 	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(RUSTC_CMD) $(RUSTC_ARGS)
 
+chainboot: COMPILER_ARGS += --release
+chainboot: PROFILE = release
+chainboot: do_chainboot
 
-chainboot : $(KERNEL_BIN)
+do_chainboot : $(KERNEL_BIN)
 	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
 
@@ -300,20 +307,22 @@ test_unit:
 
 
 $(KERNEL_LIB): $(KERNEL_ELF_DEPS) 
-	$(call color_header, "Compiling kernel static lib - $(BSP)")
-	@RUSTFLAGS="$(RUSFTFLAGS_DEBUG)" $(RUSTC_LIB_CMD)
+	@$(RUSTC_LIB_CMD)
+	$(call color_header, "Compiling kernel static lib - $(BSP) with profile - $(PROFILE)")
 
 $(ASSEMBLED_BOOT): $(BOOT_ASM)
 	$(call color_header, "Assembling boot.s")
+	@echo $(ASSEMBLED_BOOT)
 	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
 
 
 $(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 	$(call color_header, "Linking kernel ELF - $(BSP)")
-	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) 
+	$(call color_header, "Output kernel ELF - $(KERNEL_ELF)")
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) $(KERNEL_ELF) 
 
 $(KERNEL_BIN): $(KERNEL_ELF)
-	$(call color_header, "Generating stripped binary")
+	$(call color_header, "Generating stripped binary with kernel elf - $(KERNEL_ELF)")
 	@$(OBJCOPY_CMD) $(KERNEL_ELF) $(KERNEL_BIN)
 	$(call color_progress_prefix, "Name")
 	@echo $(KERNEL_BIN)

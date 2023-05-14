@@ -24,8 +24,6 @@ global_asm!(
     CONST_CORE_ID_MASK = const 0b11
 );
 
-use crate::println;
-
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;
     static l1_page_table: u8;

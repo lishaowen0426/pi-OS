@@ -8,4 +8,15 @@ exclude = ["chainboot_kernel", "X1_JTAG_boot"]
 
 [profile.release]
 lto = true
+opt-level = 3
+debug = false
 
+[profile.dev]
+lto = true
+opt-level = 0
+debug = 2
+
+[profile.test]
+lto = true
+opt-level = 0
+debug = 2

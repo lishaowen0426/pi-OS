@@ -1,6 +1,6 @@
 use super::{address::*, config};
-use crate::{errno::*, println, utils::bitfields::Bitfields};
-use core::{fmt, marker::PhantomData, ops::Range, ptr};
+use crate::{errno::*, utils::bitfields::Bitfields};
+use core::{fmt, marker::PhantomData, ops::Range};
 
 #[derive(Default)]
 pub struct Level1;
@@ -496,7 +496,7 @@ impl Descriptor {
         }
     }
     const fn RWX_normal() -> u64 {
-        (0b1 << Self::AttrIndx.start) // Normal Memory
+        (0b0 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
             | (0b00 << Self::AP.start) //Read Write
             | (0b11 << Self::SH.start) //Inner Shareable
@@ -504,7 +504,7 @@ impl Descriptor {
             | (0b0 << Self::nG) //Always global
             | (0b0 << Self::Contiguous) //Non contiguous
             | (0b0 << Self::PXN) // Executable at EL1
-            | (0b1 << Self::UXN) // Never Executable at EL0
+            | (0b0 << Self::UXN) // Never Executable at EL0
     }
 
     pub fn set_RWX_normal(&mut self) -> Result<(), ErrorCode> {
@@ -649,7 +649,7 @@ impl Descriptor {
         (0b0 << Self::NSTable)
             | (0b01 << Self::APTable.start)
             | (0b1 << Self::UXNTable)
-            | (0b1 << Self::PXNTable)
+            | (0b0 << Self::PXNTable)
     }
     pub fn set_table_attributes(&mut self) -> Result<(), ErrorCode> {
         match *self {
@@ -750,11 +750,11 @@ impl<L> From<Descriptor> for TranslationTableEntry<L> {
     }
 }
 
-pub trait get_descriptor {
+pub trait GetDescriptor {
     fn get(&self) -> Descriptor;
 }
 
-impl get_descriptor for TranslationTableEntry<Level1> {
+impl GetDescriptor for TranslationTableEntry<Level1> {
     fn get(&self) -> Descriptor {
         if !self.is_valid() {
             Descriptor::INVALID
@@ -765,7 +765,7 @@ impl get_descriptor for TranslationTableEntry<Level1> {
         }
     }
 }
-impl get_descriptor for TranslationTableEntry<Level2> {
+impl GetDescriptor for TranslationTableEntry<Level2> {
     fn get(&self) -> Descriptor {
         if !self.is_valid() {
             Descriptor::INVALID
@@ -776,7 +776,7 @@ impl get_descriptor for TranslationTableEntry<Level2> {
         }
     }
 }
-impl get_descriptor for TranslationTableEntry<Level3> {
+impl GetDescriptor for TranslationTableEntry<Level3> {
     fn get(&self) -> Descriptor {
         if !self.is_valid() {
             Descriptor::INVALID

@@ -1,5 +1,5 @@
 use super::address::*;
-use crate::{errno::*, println};
+use crate::errno::*;
 
 extern "C" {
     fn clear_frame(frame: usize);
