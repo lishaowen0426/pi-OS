@@ -496,7 +496,7 @@ impl Descriptor {
         }
     }
     const fn RWX_normal() -> u64 {
-        (0b0 << Self::AttrIndx.start) // Normal Memory
+        (0b1 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
             | (0b00 << Self::AP.start) //Read Write
             | (0b11 << Self::SH.start) //Inner Shareable
@@ -643,12 +643,12 @@ impl Descriptor {
     // Table attributes are fixed
     //
     // APTable = 01: Accesses from EL0 are never permitted in subsequent tables
-    // UXN = PXN = 1: Never execute
+    // UXN = PXN = 0: Does not effect the executability of subsequent tables
     // NS = 0: secure
     const fn Table_attr() -> u64 {
         (0b0 << Self::NSTable)
             | (0b01 << Self::APTable.start)
-            | (0b1 << Self::UXNTable)
+            | (0b0 << Self::UXNTable)
             | (0b0 << Self::PXNTable)
     }
     pub fn set_table_attributes(&mut self) -> Result<(), ErrorCode> {

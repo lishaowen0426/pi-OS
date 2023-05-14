@@ -21,7 +21,7 @@ use mmu_config::config;
 use translation_table::*;
 use translation_entry::*;
 
-
+use core::arch::asm;
 pub struct MemoryManagementUnit;
 
 impl MemoryManagementUnit {
@@ -108,6 +108,7 @@ impl MemoryManagementUnit {
         barrier::isb(barrier::SY);
         println!("before enable mmu");
         
+        
         /*
         unsafe{
             asm!(
@@ -116,10 +117,11 @@ impl MemoryManagementUnit {
             );
         }
             */
+        
             
         // Enable the MMU and turn on data and instruction caching.
         
-        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable+ SCTLR_EL1::WXN::Disable);
+        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::NonCacheable+ SCTLR_EL1::WXN::Disable);
         
         barrier::isb(barrier::SY);
         println!("after enable mmu");

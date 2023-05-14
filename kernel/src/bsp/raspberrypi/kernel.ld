@@ -68,6 +68,7 @@ SECTIONS
     .data : {
         __data_start = .;
         *(.data*);
+        . = ALIGN(PAGE_SIZE);
         __data_end_exclusive = .;
     }:segment_data
 

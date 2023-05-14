@@ -12,6 +12,8 @@ extern "C" {
     static __code_end_exclusive: u8;
     static __bss_start: u8;
     static __bss_end_exclusive: u8;
+    static __data_start: u8;
+    static __data_end_exclusive: u8;
 }
 
 pub struct TranslationTable<L> {
@@ -94,6 +96,8 @@ impl L1TranslationTable {
         let mut boot_core_stack_end_exclusive_addr: usize = 0;
         let mut code_start_addr: usize = 0;
         let mut code_end_addr: usize = 0;
+        let mut data_start_addr: usize = 0;
+        let mut data_end_addr: usize = 0;
         let mut bss_start_addr: usize = 0;
         let mut bss_end_addr: usize = 0;
         let l1_page_start_addr: usize = self.base.addr().get();
@@ -103,6 +107,8 @@ impl L1TranslationTable {
                 &__boot_core_stack_end_exclusive as *const _ as usize;
             code_start_addr = &__code_start as *const _ as usize;
             code_end_addr = &__code_end_exclusive as *const _ as usize;
+            data_start_addr = &__data_start as *const _ as usize;
+            data_end_addr = &__data_end_exclusive as *const _ as usize;
             bss_start_addr = &__bss_start as *const _ as usize;
             bss_end_addr = &__bss_end_exclusive as *const _ as usize;
         }
@@ -152,6 +158,8 @@ impl L1TranslationTable {
                 VirtualAddress::try_from(boot_core_stack_end_exclusive_addr).unwrap();
             let code_start = VirtualAddress::try_from(code_start_addr).unwrap();
             let code_end = VirtualAddress::try_from(code_end_addr).unwrap();
+            let data_start = VirtualAddress::try_from(data_start_addr).unwrap();
+            let data_end = VirtualAddress::try_from(data_end_addr).unwrap();
             let bss_start = VirtualAddress::try_from(bss_start_addr).unwrap();
             let bss_end = VirtualAddress::try_from(bss_end_addr).unwrap();
             let l1_page_table_start = VirtualAddress::try_from(l1_page_start_addr).unwrap();
@@ -161,6 +169,8 @@ impl L1TranslationTable {
             println!("boot stack top: {:?}", boot_stack_end);
             println!("code start: {:?}", code_start);
             println!("code end: {:?}", code_end);
+            println!("data start: {:?}", data_start);
+            println!("data end: {:?}", data_end);
             println!("bss start: {:?}", bss_start);
             println!("bss end: {:?}", bss_end);
             println!("l1 page table: {:?}", l1_page_table_start);
@@ -192,7 +202,7 @@ impl L1TranslationTable {
                         l1_entry.set_address(allocated_frame_addr)?;
                         self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
                         println!(
-                            "New table: l1[{}] = {}",
+                            "New table: l1[{}] = {:?}",
                             va.level1(),
                             self[va.level1()].get()
                         );
@@ -221,10 +231,11 @@ impl L1TranslationTable {
                         l2_entry.set_address(allocated_frame_addr)?;
                         l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry))?;
                         println!(
-                            "New table: l2[{}] = {}",
+                            "New table: l2[{}] = {:?}",
                             va.level2(),
                             l2_table[va.level2()].get()
                         );
+
                         Option::Some(TranslationTable::<Level3>::new(
                             allocated_frame_addr.value() as *mut L3Entry,
                             config::ENTRIES_PER_TABLE,
@@ -276,6 +287,11 @@ impl L1TranslationTable {
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
                         l1_entry.set_address(allocated_frame_addr)?;
                         self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
+                        println!(
+                            "New table: l1[{}] = {:?}",
+                            va.level1(),
+                            self[va.level1()].get()
+                        );
 
                         Option::Some(TranslationTable::<Level2>::new(
                             allocated_frame_addr.value() as *mut L2Entry,
@@ -302,12 +318,12 @@ impl L1TranslationTable {
                     _ => return Err(ETYPE),
                 };
 
-                println!(
-                    "l2[{}] = {:?}  <=> {}",
-                    va.level2(),
-                    l2_table[va.level2()].get(),
-                    va
-                );
+                // println!(
+                // "l2[{}] = {:?}  <=> {}",
+                // va.level2(),
+                // l2_table[va.level2()].get(),
+                // va
+                // );
 
                 Ok(())
             };
@@ -343,29 +359,31 @@ impl L1TranslationTable {
             };
 
             let va_start = VirtualAddress::try_from(0usize).unwrap();
+            // table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
             println!("boot stack pages");
-            // va_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
-            table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
-            //});
-            // va_start.iter_4k_to(boot_stack_end).unwrap().for_each(|va| {
-            // table_walk_and_identity_map_4k(va, RWNORMAL, &mut linear_allocator).unwrap();
-            // });
-            // println!("code pages");
-            // code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
-            // table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
-            // });
-            // println!("bss pages");
-            // bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
-            // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
-            // });
+            va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
+                table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            });
+            println!("code pages");
+            code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
+                table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
+            });
+            println!("rodata pages");
+            data_start.iter_4K_to(data_end).unwrap().for_each(|va| {
+                table_walk_and_identity_map_4K(va, RONORMAL, &mut linear_allocator).unwrap();
+            });
+            println!("bss pages");
+            bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
+                table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            });
             println!("mmio pages");
 
             let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             peripheral_start
-                .iter_4K_to(memory_end)
+                .iter_2M_to(memory_end)
                 .unwrap()
                 .for_each(|va| {
-                    table_walk_and_identity_map_4K(va, RWDEVICE, &mut linear_allocator).unwrap();
+                    table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
                 });
             println!("The next free frame = {:?}", linear_allocator.peek());
             println!("Have you mapped page table frames and mmio?");
