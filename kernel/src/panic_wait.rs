@@ -4,7 +4,7 @@
 
 //! A panic handler that infinitely waits.
 
-use crate::cpu;
+use crate::{cpu, println};
 use core::panic::PanicInfo;
 
 #[linkage = "weak"]
@@ -34,10 +34,8 @@ fn panic_prevent_reenter() {
     _panic_exit()
 }
 
-#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    use crate::println;
     panic_prevent_reenter();
 
     let (location, line, col) = match info.location() {
@@ -46,20 +44,12 @@ fn panic(info: &PanicInfo) -> ! {
     };
 
     println!(
-        "Kernel Panic!\n\nPanic localtion:\n  File '{}', line {}, column {}\n\n {}",
+        "Kernel Panic localtion:\n  File '{}', line {}, column {}\n\n {}",
         location,
         line,
         col,
         info.message().unwrap_or(&format_args!(""))
     );
-
-    _panic_exit()
-}
-
-#[cfg(test)]
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    panic_prevent_reenter();
 
     _panic_exit()
 }

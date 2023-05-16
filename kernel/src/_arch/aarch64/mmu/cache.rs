@@ -1,10 +1,8 @@
-use crate::{errno::*, println, type_enum, utils::bitfields::Bitfields};
+use super::{address::*, config};
+use crate::{cpu::registers::*, errno::*, println, type_enum, utils::bitfields::Bitfields};
 use aarch64_cpu::registers::*;
-use core::fmt;
-use tock_registers::{
-    interfaces::{ReadWriteable, Readable, Writeable},
-    register_bitfields,
-};
+use core::{arch::asm, fmt};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // Ways
 // +------+  +------+  +------+  +------+
@@ -56,7 +54,7 @@ use tock_registers::{
 //
 //   PoU can also be applied to a inner shareable domain.
 //
-// PoC and PoU are for cache maintainance instructions operating on VA. For instructions operating
+// PoC and PoU are for cache maintenance instructions operating on VA. For instructions operating
 // by set/way, the point is the next level of caching for clean and the current specified level for
 // i* nvalidate. For example, cleaning the L1 cache flushes to level 2 cache.
 
@@ -67,6 +65,15 @@ type_enum!(
         DataCacheOnly = 0b010,
         SeparateInstAndDataCache = 0b011,
         UnifiedCache = 0b100,
+    }
+);
+
+type_enum!(
+    pub enum L1InstPolicy {
+        VPIPT = 0b00,
+        AIVIVT = 0b01,
+        VIPT = 0b10,
+        PIPT = 0b11,
     }
 );
 
@@ -118,6 +125,9 @@ impl fmt::Display for A64Cache {
 
 #[derive(Default)]
 pub struct A64CacheSet {
+    l1ip: L1InstPolicy,
+    dminline: u32, // in bytes
+    iminline: u32,
     louu: u8,
     loc: u8,
     caches: [Option<A64Cache>; 7],
@@ -125,7 +135,11 @@ pub struct A64CacheSet {
 
 impl fmt::Display for A64CacheSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "A64CacheSet: LoU = {}, LoC = {}", self.louu, self.loc)?;
+        write!(
+            f,
+            "A64CacheSet: LoU = {}, LoC = {}, dminline = {}, iminline= {}, L1InstPolicy = {}",
+            self.louu, self.loc, self.dminline, self.iminline, self.l1ip
+        )?;
         for c in &self.caches {
             if let Some(cc) = c.as_ref() {
                 writeln!(f, "")?;
@@ -141,13 +155,21 @@ pub struct A64TLB;
 impl A64CacheSet {
     pub fn new() -> Option<A64CacheSet> {
         println!("Cache information:");
+        let l1ip = L1InstPolicy::from(CTR_EL0.read(CTR_EL0::L1Ip) as u8);
+        let dminline = (1 << (CTR_EL0.read(CTR_EL0::DminLine))) * config::WORD_SIZE;
+        let iminline = (1 << (CTR_EL0.read(CTR_EL0::IminLine))) * config::WORD_SIZE;
+        println!("MTE2: {}", ID_AA64PFR1_EL1.is_mte2_supported());
+
         // Cache Level ID Register: CLIDR_EL1
         let louu = CLIDR_EL1.read(CLIDR_EL1::LoUU);
         let loc = CLIDR_EL1.read(CLIDR_EL1::LoC);
 
         let mut a64_caches = A64CacheSet::default();
+        a64_caches.l1ip = l1ip;
         a64_caches.louu = louu as u8;
         a64_caches.loc = loc as u8;
+        a64_caches.dminline = dminline as u32;
+        a64_caches.iminline = iminline as u32;
         let clidr_el1_raw = CLIDR_EL1.get();
 
         for n in 1..8 {
@@ -202,6 +224,48 @@ impl A64CacheSet {
 
         Some(a64_caches)
     }
+
+    pub fn ic_invalidate_all_pou_is(&self) {
+        unsafe {
+            asm!("IC IALLUIS", "DSB SY");
+        }
+    }
+    pub fn ic_invalidate_all_pou(&self) {
+        unsafe {
+            asm!("IC IALLU", "DSB SY");
+        }
+    }
+
+    // Cache maintenance instructions operating on VA might fault since
+    // they involve a VA-PA translation. See the manual: Cache Support
+    pub fn dc_invalidate_va_poc(&self, va: VirtualAddress) {
+        unsafe {
+            asm!("DC IVAC {}", "DSB SY", in(reg) va.value() as u64);
+        }
+    }
+    pub fn dc_clean_va_poc(&self, va: VirtualAddress) {
+        unsafe {
+            asm!("DC CVAC {}", "DSB SY", in(reg) va.value() as u64);
+        }
+    }
+    pub fn dc_clean_va_pou(&self, va: VirtualAddress) {
+        unsafe {
+            asm!("DC CVAU {}", "DSB SY", in(reg) va.value() as u64);
+        }
+    }
+
+    pub fn dc_clean_invalidate_va_poc(&self, va: VirtualAddress) {
+        unsafe {
+            asm!("DC CIVAC {}", "DSB SY", in(reg) va.value() as u64);
+        }
+    }
+
+    pub fn dc_invalidate_all(&self) {
+        core::todo!();
+    }
+    pub fn dc_clean_all(&self) {
+        core::todo!();
+    }
 }
 #[cfg(test)]
 #[allow(unused_imports, unused_variables, dead_code)]
@@ -212,5 +276,6 @@ mod tests {
     fn test_a64cache_tlb() {
         let a64_caches = A64CacheSet::new().unwrap();
         println!("{}", a64_caches);
+        a64_caches.dc_clean_all();
     }
 }

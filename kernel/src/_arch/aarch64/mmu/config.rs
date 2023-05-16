@@ -3,6 +3,8 @@
 pub(super) mod config {
     use core::ops::Range;
 
+    pub const WORD_SIZE: usize = 4; // 32bits
+
     pub const SHIFT_4K: usize = 12;
     pub const MASK_4K: usize = (1 << SHIFT_4K) - 1;
     pub const ALIGN_4K: usize = !MASK_4K;

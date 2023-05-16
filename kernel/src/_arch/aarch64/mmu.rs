@@ -34,7 +34,6 @@ impl MemoryManagementUnit {
 
     pub fn cache_info(&self) {
         let a64_caches = A64CacheSet::new().unwrap();
-        println!("{}", a64_caches);
     } 
 
     fn is_4kb_page_supported(&self) -> bool {
@@ -120,20 +119,16 @@ impl MemoryManagementUnit {
         //barrier
         barrier::isb(barrier::SY);
             
-        
-        /*
-        unsafe{
-            asm!(
-                "IC IALLU", /*invalidate instruction cache*/
-                "TLBI ALLE1",
-            );
-        }
-            */
-        
+
             
         // Enable the MMU and turn on data and instruction caching.
         
-        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable+ SCTLR_EL1::WXN::Disable);
+        SCTLR_EL1.modify(SCTLR_EL1::M::Enable
+            + SCTLR_EL1::C::Cacheable
+            + SCTLR_EL1::I::Cacheable
+            + SCTLR_EL1::WXN::Disable 
+            + SCTLR_EL1::UCI::Trap /*Cache maintenance instruction at EL0 are not allowed*/
+        );
         
         barrier::isb(barrier::SY);
         unsafe{

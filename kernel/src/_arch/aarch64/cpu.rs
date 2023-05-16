@@ -1,6 +1,8 @@
 use aarch64_cpu::asm;
-
 pub use asm::nop;
+
+#[path = "cpu/registers.rs"]
+pub mod registers;
 
 #[cfg(feature = "bsp_rpi3")]
 #[inline(always)]
