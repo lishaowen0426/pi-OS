@@ -112,7 +112,7 @@ RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir
     
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
-RUSTC_LIB_CMD = cargo rustc --verbose   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS) 
+RUSTC_LIB_CMD = cargo rustc --verbose   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)  
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)

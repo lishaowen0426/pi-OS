@@ -386,7 +386,8 @@ impl L1TranslationTable {
                     table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
                 });
             println!("The next free frame = {:?}", linear_allocator.peek());
-            println!("Have you mapped page table frames and mmio?");
+            println!("Have you mapped page table frames?");
+            println!("The first entry of the l1 table:{}", self[0].value());
         }
 
         Ok(())
