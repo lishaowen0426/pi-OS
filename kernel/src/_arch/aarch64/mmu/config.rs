@@ -54,6 +54,8 @@ pub(super) mod config {
     pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x3FFF_FFFF;
     #[cfg(feature = "bsp_rpi4")]
     pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0xFFFF_FFFF; // we assume pi4 has 4GB memory
+                                                                  //
+    pub const PHYSICAL_MEMORY_END_EXCLUSIVE: usize = PHYSICAL_MEMORY_END_INCLUSIVE + 1;
 
     pub const NUMBER_OF_FRAMES: usize = (PHYSICAL_MEMORY_END_INCLUSIVE >> SHIFT_4K) + 1;
     pub const NUMBER_OF_PAGES: usize = (0xFFFF_FFFF_FFFF >> SHIFT_4K) + 1;

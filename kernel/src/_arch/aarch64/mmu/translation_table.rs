@@ -165,7 +165,7 @@ impl L1TranslationTable {
             let l1_page_table_start = VirtualAddress::try_from(l1_page_start_addr).unwrap();
             let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             let memory_end =
-                VirtualAddress::try_from(config::PHYSICAL_MEMORY_END_INCLUSIVE + 1).unwrap();
+                VirtualAddress::try_from(config::PHYSICAL_MEMORY_END_EXCLUSIVE).unwrap();
             println!("boot stack top: {:?}", boot_stack_end);
             println!("code start: {:?}", code_start);
             println!("code end: {:?}", code_end);

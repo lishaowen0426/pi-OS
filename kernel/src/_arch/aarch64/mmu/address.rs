@@ -46,20 +46,45 @@ pub mod AddressEdit {
         addr >> config::SHIFT_1G
     }
 
-    pub fn align_to_4K(addr: usize) -> usize {
+    pub fn align_to_4K_up(addr: usize) -> usize {
         addr & config::ALIGN_4K
     }
-    pub fn align_to_16K(addr: usize) -> usize {
+    pub fn align_to_16K_up(addr: usize) -> usize {
         addr & config::ALIGN_16K
     }
-    pub fn align_to_64K(addr: usize) -> usize {
+    pub fn align_to_64K_up(addr: usize) -> usize {
         addr & config::ALIGN_64K
     }
-    pub fn align_to_2M(addr: usize) -> usize {
+    pub fn align_to_2M_up(addr: usize) -> usize {
         addr & config::ALIGN_2M
     }
-    pub fn align_to_1G(addr: usize) -> usize {
+    pub fn align_to_1G_up(addr: usize) -> usize {
         addr & config::ALIGN_1G
+    }
+
+    pub fn align_up(addr: usize, alignment: usize) -> usize {
+        let align = !(alignment - 1);
+        addr & align
+    }
+
+    pub fn align_to_4K_down(addr: usize) -> usize {
+        (addr + config::MASK_4K) & config::ALIGN_4K
+    }
+    pub fn align_to_16K_down(addr: usize) -> usize {
+        (addr + config::MASK_16K) & config::ALIGN_16K
+    }
+    pub fn align_to_64K_down(addr: usize) -> usize {
+        (addr + config::MASK_64K) & config::ALIGN_64K
+    }
+    pub fn align_to_2M_down(addr: usize) -> usize {
+        (addr + config::MASK_2M) & config::ALIGN_2M
+    }
+    pub fn align_to_1G_down(addr: usize) -> usize {
+        (addr + config::MASK_1G) & config::ALIGN_1G
+    }
+    pub fn align_down(addr: usize, alignment: usize) -> usize {
+        let align = !(alignment - 1);
+        (addr + alignment - 1) & align
     }
 }
 macro_rules! declare_address {
@@ -155,20 +180,45 @@ macro_rules! impl_address {
                 self.0 >> config::SHIFT_1G
             }
 
-            pub fn align_to_4K(&self) -> usize {
+            pub fn align_to_4K_up(&self) -> usize {
                 self.0 & config::ALIGN_4K
             }
-            pub fn align_to_16K(&self) -> usize {
+            pub fn align_to_16K_up(&self) -> usize {
                 self.0 & config::ALIGN_16K
             }
-            pub fn align_to_64K(&self) -> usize {
+            pub fn align_to_64K_up(&self) -> usize {
                 self.0 & config::ALIGN_64K
             }
-            pub fn align_to_2M(&self) -> usize {
+            pub fn align_to_2M_up(&self) -> usize {
                 self.0 & config::ALIGN_2M
             }
-            pub fn align_to_1G(&self) -> usize {
+            pub fn align_to_1G_up(&self) -> usize {
                 self.0 & config::ALIGN_1G
+            }
+
+            pub fn align_up(&self, alignment: usize) -> usize {
+                let align = !(alignment - 1);
+                self.0 & align
+            }
+
+            pub fn align_to_4K_down(&self) -> usize {
+                (self.0 + config::MASK_4K) & config::ALIGN_4K
+            }
+            pub fn align_to_16K_down(&self) -> usize {
+                (self.0 + config::MASK_16K) & config::ALIGN_16K
+            }
+            pub fn align_to_64K_down(&self) -> usize {
+                (self.0 + config::MASK_64K) & config::ALIGN_64K
+            }
+            pub fn align_to_2M_down(&self) -> usize {
+                (self.0 + config::MASK_2M) & config::ALIGN_2M
+            }
+            pub fn align_to_1G_down(&self) -> usize {
+                (self.0 + config::MASK_1G) & config::ALIGN_1G
+            }
+            pub fn align_down(&self, alignment: usize) -> usize {
+                let align = !(alignment - 1);
+                (self.0 + alignment - 1) & align
             }
         }
     };
@@ -269,10 +319,11 @@ where
     }
 }
 
+// End address is always exclusive. So we allow the largest address to be 1 pass the end
 impl TryFrom<usize> for VirtualAddress {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value > 0xFFFF_FFFF_FFFF {
+        if value > (0xFFFF_FFFF_FFFF + 1) {
             Err(EOVERFLOW)
         } else {
             Ok(Self(value))
@@ -282,7 +333,7 @@ impl TryFrom<usize> for VirtualAddress {
 impl TryFrom<usize> for PhysicalAddress {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value > config::PHYSICAL_MEMORY_END_INCLUSIVE {
+        if value > config::PHYSICAL_MEMORY_END_EXCLUSIVE {
             Err(EOVERFLOW)
         } else {
             Ok(Self(value))
@@ -292,7 +343,7 @@ impl TryFrom<usize> for PhysicalAddress {
 impl TryFrom<usize> for PageNumber {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value >= config::NUMBER_OF_PAGES {
+        if value > config::NUMBER_OF_PAGES {
             Err(EOVERFLOW)
         } else {
             Ok(Self(value))
@@ -302,7 +353,7 @@ impl TryFrom<usize> for PageNumber {
 impl TryFrom<usize> for FrameNumber {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value >= config::NUMBER_OF_FRAMES {
+        if value > config::NUMBER_OF_FRAMES {
             Err(EOVERFLOW)
         } else {
             Ok(Self(value))
@@ -403,7 +454,7 @@ impl VirtualAddress {
         self
     }
 
-    fn iter_to(start: Self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
+    fn _iter_to(start: Self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
 
         if !AddressEdit::is_aligned_to(start.0, step)
@@ -419,7 +470,7 @@ impl VirtualAddress {
         }
     }
 
-    fn iter_for(start: Self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
+    fn _iter_for(start: Self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
         let end_addr = start + VirtualAddress::try_from(step.checked_mul(n).unwrap()).unwrap();
         if !AddressEdit::is_aligned_to(start.0, step)
             || !AddressEdit::is_aligned_to(end_addr.0, step)
@@ -437,77 +488,93 @@ impl VirtualAddress {
     // end is exclusive
     pub fn iter_4K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
-        Self::iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_4K(self.0)).unwrap(),
+        Self::_iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_4K_up(self.0)).unwrap(),
             1 << config::SHIFT_4K,
-            VirtualAddress::try_from(AddressEdit::align_to_4K(end_addr.0)).unwrap(),
+            VirtualAddress::try_from(AddressEdit::align_to_4K_down(end_addr.0)).unwrap(),
         )
     }
     pub fn iter_16K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
-        Self::iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_16K(self.0)).unwrap(),
+        Self::_iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_16K_up(self.0)).unwrap(),
             1 << config::SHIFT_16K,
-            VirtualAddress::try_from(AddressEdit::align_to_16K(end_addr.0)).unwrap(),
+            VirtualAddress::try_from(AddressEdit::align_to_16K_down(end_addr.0)).unwrap(),
         )
     }
     pub fn iter_64K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
-        Self::iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_64K(self.0)).unwrap(),
+        Self::_iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_64K_up(self.0)).unwrap(),
             1 << config::SHIFT_64K,
-            VirtualAddress::try_from(AddressEdit::align_to_64K(end_addr.0)).unwrap(),
+            VirtualAddress::try_from(AddressEdit::align_to_64K_down(end_addr.0)).unwrap(),
         )
     }
     pub fn iter_2M_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
-        Self::iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_2M(self.0)).unwrap(),
+        Self::_iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_2M_up(self.0)).unwrap(),
             1 << config::SHIFT_2M,
-            VirtualAddress::try_from(AddressEdit::align_to_2M(end_addr.0)).unwrap(),
+            VirtualAddress::try_from(AddressEdit::align_to_2M_down(end_addr.0)).unwrap(),
         )
     }
     pub fn iter_1G_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
-        Self::iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_1G(self.0)).unwrap(),
+        Self::_iter_to(
+            VirtualAddress::try_from(AddressEdit::align_to_1G_up(self.0)).unwrap(),
             1 << config::SHIFT_1G,
-            VirtualAddress::try_from(AddressEdit::align_to_1G(end_addr.0)).unwrap(),
+            VirtualAddress::try_from(AddressEdit::align_to_1G_down(end_addr.0)).unwrap(),
+        )
+    }
+
+    pub fn iter_to(&self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(
+            VirtualAddress::try_from(AddressEdit::align_up(self.0, step)).unwrap(),
+            step,
+            VirtualAddress::try_from(AddressEdit::align_down(end_addr.0, step)).unwrap(),
         )
     }
 
     pub fn iter_4K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_4K(self.0)).unwrap(),
+        Self::_iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_4K_up(self.0)).unwrap(),
             1 << config::SHIFT_4K,
             n,
         )
     }
     pub fn iter_16K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_16K(self.0)).unwrap(),
+        Self::_iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_16K_up(self.0)).unwrap(),
             1 << config::SHIFT_16K,
             n,
         )
     }
     pub fn iter_64K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_64K(self.0)).unwrap(),
+        Self::_iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_64K_up(self.0)).unwrap(),
             1 << config::SHIFT_64K,
             n,
         )
     }
     pub fn iter_2M_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_2M(self.0)).unwrap(),
+        Self::_iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_2M_up(self.0)).unwrap(),
             1 << config::SHIFT_2M,
             n,
         )
     }
     pub fn iter_1G_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_1G(self.0)).unwrap(),
+        Self::_iter_for(
+            VirtualAddress::try_from(AddressEdit::align_to_1G_up(self.0)).unwrap(),
             1 << config::SHIFT_1G,
+            n,
+        )
+    }
+    pub fn iter_for(&self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(
+            VirtualAddress::try_from(AddressEdit::align_up(self.0, step)).unwrap(),
+            step,
             n,
         )
     }
@@ -691,22 +758,62 @@ mod tests {
             for (_, _) in start.iter_4K_for(0).unwrap().enumerate() {
                 panic!()
             }
-            for (_, _) in start
-                .iter_1G_to(VirtualAddress::try_from(bsp::mmio::PERIPHERAL_START).unwrap())
-                .unwrap()
-                .enumerate()
-            {
-                panic!()
-            }
         }
         {
-            let mut frame = FrameNumber::try_from(config::NUMBER_OF_FRAMES - 1).unwrap();
+            let mut frame = FrameNumber::try_from(config::NUMBER_OF_FRAMES).unwrap();
             assert!(frame.next().is_none());
 
             let mut frame2 = FrameNumber::try_from(7463).unwrap();
             let copy = frame2.next().unwrap();
             assert_eq!(frame2, FrameNumber::try_from(7463 + 1).unwrap());
             assert_eq!(copy, FrameNumber::try_from(7463).unwrap());
+        }
+        {
+            let addr1 = VirtualAddress::try_from(0usize).unwrap();
+            let addr2 = VirtualAddress::try_from(1usize).unwrap();
+            let addr3 = VirtualAddress::try_from(0xFFFusize).unwrap();
+            let addr4 = VirtualAddress::try_from(0x1000usize).unwrap();
+            let addr5 = VirtualAddress::try_from(0x1000usize).unwrap();
+            assert_eq!(
+                VirtualAddress::try_from(addr1.align_to_4K_up()).unwrap(),
+                addr1
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr1.align_to_4K_down()).unwrap(),
+                addr1
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr2.align_to_4K_up()).unwrap(),
+                addr1
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr2.align_to_4K_down()).unwrap(),
+                addr4
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr3.align_to_4K_up()).unwrap(),
+                addr1
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr3.align_to_4K_down()).unwrap(),
+                addr4
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr4.align_to_4K_up()).unwrap(),
+                addr4
+            );
+            assert_eq!(
+                VirtualAddress::try_from(addr4.align_to_4K_down()).unwrap(),
+                addr5
+            );
+        }
+        {
+            let step = 64 as usize;
+            let start = VirtualAddress::try_from(0usize).unwrap();
+            let end = VirtualAddress::try_from(10 * step).unwrap();
+            for (i, v) in start.iter_to(step, end).unwrap().enumerate() {
+                assert_eq!(VirtualAddress::try_from(i * step).unwrap(), v);
+            }
         }
     }
 }

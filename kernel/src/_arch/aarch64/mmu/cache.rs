@@ -126,8 +126,8 @@ impl fmt::Display for A64Cache {
 #[derive(Default)]
 pub struct A64CacheSet {
     l1ip: L1InstPolicy,
-    dminline: u32, // in bytes
-    iminline: u32,
+    dminline: usize, // in bytes
+    iminline: usize,
     louu: u8,
     loc: u8,
     caches: [Option<A64Cache>; 7],
@@ -154,7 +154,6 @@ pub struct A64TLB;
 
 impl A64CacheSet {
     pub fn new() -> Option<A64CacheSet> {
-        println!("Cache information:");
         let l1ip = L1InstPolicy::from(CTR_EL0.read(CTR_EL0::L1Ip) as u8);
         let dminline = (1 << (CTR_EL0.read(CTR_EL0::DminLine))) * config::WORD_SIZE;
         let iminline = (1 << (CTR_EL0.read(CTR_EL0::IminLine))) * config::WORD_SIZE;
@@ -168,8 +167,8 @@ impl A64CacheSet {
         a64_caches.l1ip = l1ip;
         a64_caches.louu = louu as u8;
         a64_caches.loc = loc as u8;
-        a64_caches.dminline = dminline as u32;
-        a64_caches.iminline = iminline as u32;
+        a64_caches.dminline = dminline;
+        a64_caches.iminline = iminline;
         let clidr_el1_raw = CLIDR_EL1.get();
 
         for n in 1..8 {
@@ -225,46 +224,128 @@ impl A64CacheSet {
         Some(a64_caches)
     }
 
+    #[inline(always)]
+    pub fn dc_align_to_this_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
+        VirtualAddress::try_from(va.align_up(self.dminline as usize)).unwrap()
+    }
+    #[inline(always)]
+    pub fn dc_align_to_next_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
+        VirtualAddress::try_from(va.align_down(self.dminline as usize)).unwrap()
+    }
+
+    #[inline(always)]
+    pub fn ic_align_to_this_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
+        VirtualAddress::try_from(va.align_up(self.iminline as usize)).unwrap()
+    }
+    #[inline(always)]
+    pub fn ic_align_to_next_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
+        VirtualAddress::try_from(va.align_up(self.iminline as usize)).unwrap()
+    }
+
+    #[inline(always)]
     pub fn ic_invalidate_all_pou_is(&self) {
         unsafe {
-            asm!("IC IALLUIS", "DSB SY");
+            asm!("IC IALLUIS", "DSB ISH", "ISB");
         }
     }
+    #[inline(always)]
     pub fn ic_invalidate_all_pou(&self) {
         unsafe {
-            asm!("IC IALLU", "DSB SY");
+            asm!("IC IALLU", "DSB SY", "ISB");
         }
+    }
+
+    // Cache maintenance instructions operating on VA have no alignment restrictions
+    #[inline(always)]
+    pub fn ic_inalidate_va_pou(&self, va: VirtualAddress) {
+        unsafe {
+            asm!("IC IVAU {}", "DSB ISH", "ISB", in(reg) va.value() as u64);
+        }
+    }
+    #[inline(always)]
+    pub fn ic_inalidate_va_range_pou(&self, start: VirtualAddress, end: VirtualAddress) {
+        start
+            .iter_to(self.iminline, end)
+            .unwrap()
+            .for_each(|va| unsafe {
+                self.ic_inalidate_va_pou(va);
+            });
     }
 
     // Cache maintenance instructions operating on VA might fault since
     // they involve a VA-PA translation. See the manual: Cache Support
+    #[inline(always)]
     pub fn dc_invalidate_va_poc(&self, va: VirtualAddress) {
         unsafe {
-            asm!("DC IVAC {}", "DSB SY", in(reg) va.value() as u64);
+            asm!("DC IVAC {}", "DSB ISH", in(reg) va.value() as u64);
         }
     }
+    #[inline(always)]
+    pub fn dc_invalidate_va_range_poc(&self, start: VirtualAddress, end: VirtualAddress) {
+        start
+            .iter_to(self.dminline, end)
+            .unwrap()
+            .for_each(|va| unsafe {
+                self.dc_invalidate_va_poc(va);
+            });
+    }
+    #[inline(always)]
     pub fn dc_clean_va_poc(&self, va: VirtualAddress) {
         unsafe {
-            asm!("DC CVAC {}", "DSB SY", in(reg) va.value() as u64);
+            asm!("DC CVAC {}", "DSB ISH", in(reg) va.value() as u64);
         }
     }
+    #[inline(always)]
+    pub fn dc_clean_va_range_poc(&self, start: VirtualAddress, end: VirtualAddress) {
+        start
+            .iter_to(self.dminline, end)
+            .unwrap()
+            .for_each(|va| unsafe {
+                self.dc_clean_va_poc(va);
+            });
+    }
+    #[inline(always)]
     pub fn dc_clean_va_pou(&self, va: VirtualAddress) {
         unsafe {
-            asm!("DC CVAU {}", "DSB SY", in(reg) va.value() as u64);
+            asm!("DC CVAU {}", "DSB ISH", in(reg) va.value() as u64);
         }
     }
+    #[inline(always)]
+    pub fn dc_clean_va_range_pou(&self, start: VirtualAddress, end: VirtualAddress) {
+        start
+            .iter_to(self.dminline, end)
+            .unwrap()
+            .for_each(|va| unsafe {
+                self.dc_clean_va_pou(va);
+            });
+    }
 
+    #[inline(always)]
     pub fn dc_clean_invalidate_va_poc(&self, va: VirtualAddress) {
         unsafe {
-            asm!("DC CIVAC {}", "DSB SY", in(reg) va.value() as u64);
+            asm!("DC CIVAC {}", "DSB ISH", in(reg) va.value() as u64);
         }
     }
-
-    pub fn dc_invalidate_all(&self) {
-        core::todo!();
+    #[inline(always)]
+    pub fn dc_clean_invalidate_va_range_poc(&self, start: VirtualAddress, end: VirtualAddress) {
+        start
+            .iter_to(self.dminline, end)
+            .unwrap()
+            .for_each(|va| unsafe {
+                self.dc_clean_invalidate_va_poc(va);
+            });
     }
-    pub fn dc_clean_all(&self) {
-        core::todo!();
+
+    // Sometimes we don't know or care whether the address is data or instruction
+    #[inline(always)]
+    pub fn caches_clean_invalidate_va(&self, va: VirtualAddress) {
+        self.dc_clean_invalidate_va_poc(va);
+        self.ic_inalidate_va_pou(va);
+    }
+    #[inline(always)]
+    pub fn caches_clean_invalidate_va_range(&self, start: VirtualAddress, end: VirtualAddress) {
+        self.dc_clean_invalidate_va_range_poc(start, end);
+        self.ic_inalidate_va_range_pou(start, end);
     }
 }
 #[cfg(test)]
@@ -276,6 +357,5 @@ mod tests {
     fn test_a64cache_tlb() {
         let a64_caches = A64CacheSet::new().unwrap();
         println!("{}", a64_caches);
-        a64_caches.dc_clean_all();
     }
 }
