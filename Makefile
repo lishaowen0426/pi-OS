@@ -229,6 +229,10 @@ readelf: $(KERNEL_ELF)
 	$(call color_header, "Launching readelf")
 	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_ELF) 
 
+readelf_asm: $(ASSEMBLED_BOOT)
+	$(call color_header, "Launching readelf for asm")
+	@$(DOCKER_TOOLS) $(READELF_BINARY) -a $(ASSEMBLED_BOOT) 
+
 ##------------------------------------------------------------------------------
 ## Run objdump
 ##------------------------------------------------------------------------------

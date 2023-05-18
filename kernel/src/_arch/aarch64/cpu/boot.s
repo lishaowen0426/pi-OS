@@ -82,8 +82,13 @@ clear_frame:
 .type	_start, function
 
 
+.include "exception.s"
+
 .section page_table, "aw", @nobits
 .p2align 12 
 .global l1_page_table
 l1_page_table:
     .space 4096, 0
+
+
+

@@ -1,10 +1,14 @@
-use super::{address::*, config, frame_allocator::*, translation_entry::*};
+use super::{address::*, cache::*, config, frame_allocator::*, translation_entry::*};
 use crate::{bsp::mmio, errno::*, println};
-use aarch64_cpu::registers::TTBR0_EL1;
+use aarch64_cpu::{
+    asm::barrier,
+    registers::{TTBR0_EL1, TTBR1_EL1},
+};
 use core::{
     ops::{Index, IndexMut},
     ptr::NonNull,
 };
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;
@@ -14,6 +18,7 @@ extern "C" {
     static __bss_end_exclusive: u8;
     static __data_start: u8;
     static __data_end_exclusive: u8;
+    static __l1_page_table_start: u8;
 }
 
 pub struct TranslationTable<L> {
@@ -71,6 +76,21 @@ pub fn get_ttbr0() -> usize {
 
 #[allow(unused_variables)]
 impl L1TranslationTable {
+    pub fn set_ttbr0(pa: PhysicalAddress, asid: u8) {
+        println!("Set up TTBR0_EL1 with pa {}, ASID = {}", pa, asid);
+        TTBR0_EL1.modify(TTBR0_EL1::ASID.val(asid as u64));
+        TTBR0_EL1.set_baddr(pa.value() as u64);
+        barrier::isb(barrier::SY);
+        A64TLB::invalidate_all();
+    }
+    pub fn set_ttbr1(pa: PhysicalAddress, asid: u8) {
+        println!("Set up TTBR1_EL1 with pa {}, ASID = {}", pa, asid);
+        TTBR1_EL1.modify(TTBR1_EL1::ASID.val(asid as u64));
+        TTBR1_EL1.set_baddr(pa.value() as u64);
+        barrier::isb(barrier::SY);
+        A64TLB::invalidate_all();
+    }
+
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         None
     }
@@ -92,7 +112,7 @@ impl L1TranslationTable {
         Ok(())
     }
 
-    pub fn set_up_init_mapping(&self) -> Result<(), ErrorCode> {
+    pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
         let mut boot_core_stack_end_exclusive_addr: usize = 0;
         let mut code_start_addr: usize = 0;
         let mut code_end_addr: usize = 0;
@@ -100,8 +120,8 @@ impl L1TranslationTable {
         let mut data_end_addr: usize = 0;
         let mut bss_start_addr: usize = 0;
         let mut bss_end_addr: usize = 0;
-        let l1_page_start_addr: usize = self.base.addr().get();
-        let l1_page_end_addr: usize = l1_page_start_addr + config::PAGE_SIZE;
+        let mut l1_page_table_start_addr: usize = 0;
+        let mut l1_page_table_end_addr: usize = 0;
         unsafe {
             boot_core_stack_end_exclusive_addr =
                 &__boot_core_stack_end_exclusive as *const _ as usize;
@@ -111,43 +131,40 @@ impl L1TranslationTable {
             data_end_addr = &__data_end_exclusive as *const _ as usize;
             bss_start_addr = &__bss_start as *const _ as usize;
             bss_end_addr = &__bss_end_exclusive as *const _ as usize;
+            l1_page_table_start_addr = &__l1_page_table_start as *const _ as usize;
+            l1_page_table_end_addr = l1_page_table_start_addr + config::PAGE_SIZE;
         }
-        unsafe {
-            println!("l1 table address: {}", self.address());
 
-            println!(
-                "l1[{}] =  {:#018x}",
-                config::RECURSIVE_L1_INDEX,
-                self.base
-                    .as_ptr()
-                    .offset(config::RECURSIVE_L1_INDEX as isize) as usize
-            );
-        }
+        let l1_table = TranslationTable::<Level1>::new(
+            l1_page_table_start_addr as *mut L1Entry,
+            config::ENTRIES_PER_TABLE,
+        );
+
         // 1. recursive L1
         {
-            let mut recursive_table_entry =
-                self[config::RECURSIVE_L1_INDEX].get().set_table().unwrap();
+            let mut recursive_table_entry = l1_table[config::RECURSIVE_L1_INDEX]
+                .get()
+                .set_table()
+                .unwrap();
             recursive_table_entry.set_table_attributes();
 
             println!("recursive {}", recursive_table_entry);
             unsafe {
-                let l1_page_table_start = PhysicalAddress::try_from(l1_page_start_addr).unwrap();
-                println!("l1 page table: {:?}", l1_page_table_start);
                 let mut recursive_page_entry = recursive_table_entry.table_to_page().unwrap();
 
                 recursive_page_entry.set_RW_normal().unwrap();
 
                 recursive_page_entry
-                    .set_address(l1_page_table_start)
+                    .set_address(PhysicalAddress::try_from(l1_page_table_start_addr).unwrap())
                     .unwrap();
                 println!("recursive {}", recursive_page_entry);
-                self.set_entry(
+                l1_table.set_entry(
                     config::RECURSIVE_L1_INDEX,
                     TranslationTableEntry::from(recursive_page_entry),
                 )?;
             }
 
-            println!("entry {}", self[config::RECURSIVE_L1_INDEX]);
+            println!("entry {}", l1_table[config::RECURSIVE_L1_INDEX]);
         }
 
         // 2. Identity map before where MMIO starts using 4kb blocks
@@ -162,7 +179,7 @@ impl L1TranslationTable {
             let data_end = VirtualAddress::try_from(data_end_addr).unwrap();
             let bss_start = VirtualAddress::try_from(bss_start_addr).unwrap();
             let bss_end = VirtualAddress::try_from(bss_end_addr).unwrap();
-            let l1_page_table_start = VirtualAddress::try_from(l1_page_start_addr).unwrap();
+            let l1_page_table_start = VirtualAddress::try_from(l1_page_table_start_addr).unwrap();
             let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
             let memory_end =
                 VirtualAddress::try_from(config::PHYSICAL_MEMORY_END_EXCLUSIVE).unwrap();
@@ -177,7 +194,7 @@ impl L1TranslationTable {
             println!("MMIO start: {:?}", peripheral_start);
             println!("MEMORY end: {:?}", memory_end);
 
-            let mut free_frame = PhysicalAddress::try_from(l1_page_end_addr)
+            let mut free_frame = PhysicalAddress::try_from(l1_page_table_end_addr)
                 .unwrap()
                 .to_frame();
             println!("free frame from {:?}", free_frame);
@@ -192,7 +209,7 @@ impl L1TranslationTable {
                 }
                 let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
-                let mut l1_entry = self[va.level1()].get();
+                let mut l1_entry = l1_table[va.level1()].get();
                 let l2_table: L2TranslationTable = match l1_entry {
                     Descriptor::INVALID => {
                         l1_entry = l1_entry.set_table()?;
@@ -200,11 +217,11 @@ impl L1TranslationTable {
                         let allocated_frame_addr: PhysicalAddress =
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
                         l1_entry.set_address(allocated_frame_addr)?;
-                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
+                        l1_table.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
                         println!(
                             "New table: l1[{}] = {:?}",
                             va.level1(),
-                            self[va.level1()].get()
+                            l1_table[va.level1()].get()
                         );
 
                         Option::Some(TranslationTable::<Level2>::new(
@@ -219,7 +236,7 @@ impl L1TranslationTable {
                     _ => None,
                 }
                 .ok_or(ETYPE)?;
-                // println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
+                // println!("l1[{}] = {}", va.level1(), l1_table[va.level1()].get());
 
                 let mut l2_entry = l2_table[va.level2()].get();
                 let l3_table: L3TranslationTable = match l2_entry {
@@ -278,7 +295,7 @@ impl L1TranslationTable {
                 }
                 let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
-                let mut l1_entry = self[va.level1()].get();
+                let mut l1_entry = l1_table[va.level1()].get();
                 let l2_table: L2TranslationTable = match l1_entry {
                     Descriptor::INVALID => {
                         l1_entry = l1_entry.set_table()?;
@@ -286,11 +303,11 @@ impl L1TranslationTable {
                         let allocated_frame_addr: PhysicalAddress =
                             frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
                         l1_entry.set_address(allocated_frame_addr)?;
-                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
+                        l1_table.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
                         println!(
                             "New table: l1[{}] = {:?}",
                             va.level1(),
-                            self[va.level1()].get()
+                            l1_table[va.level1()].get()
                         );
 
                         Option::Some(TranslationTable::<Level2>::new(
@@ -305,7 +322,7 @@ impl L1TranslationTable {
                     _ => None,
                 }
                 .ok_or(ETYPE)?;
-                // println!("l1[{}] = {}", va.level1(), self[va.level1()].get());
+                // println!("l1[{}] = {}", va.level1(), l1_table[va.level1()].get());
 
                 let mut l2_entry = l2_table[va.level2()].get();
                 match l2_entry {
@@ -337,13 +354,13 @@ impl L1TranslationTable {
                 }
                 let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
-                let mut l1_entry = self[va.level1()].get();
+                let mut l1_entry = l1_table[va.level1()].get();
                 match l1_entry {
                     Descriptor::INVALID => {
                         l1_entry = l1_entry.set_l1_block()?;
                         l1_entry.set_attributes(mt)?;
                         l1_entry.set_address(mapped_to)?;
-                        self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
+                        l1_table.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
                     }
                     _ => return Err(ETYPE),
                 };
@@ -351,7 +368,7 @@ impl L1TranslationTable {
                 println!(
                     "l1[{}] = {:?}  <=> {}",
                     va.level1(),
-                    self[va.level1()].get(),
+                    l1_table[va.level1()].get(),
                     va
                 );
 
@@ -386,8 +403,8 @@ impl L1TranslationTable {
                     table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
                 });
             println!("The next free frame = {:?}", linear_allocator.peek());
-            println!("Have you mapped page table frames?");
-            println!("The first entry of the l1 table:{}", self[0].value());
+            let l1_pa = PhysicalAddress::try_from(l1_page_table_start_addr).unwrap();
+            L1TranslationTable::set_ttbr0(l1_pa, 0);
         }
 
         Ok(())
@@ -447,7 +464,7 @@ mod tests {
                 l1_addr + config::RECURSIVE_L1_INDEX * 8
             );
 
-            l1_table.set_up_init_mapping();
+            L1TranslationTable::set_up_init_mapping();
         }
 
         // set up the recursive entry

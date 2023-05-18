@@ -25,16 +25,24 @@ use translation_entry::*;
 use cache::*;
 
 use core::arch::asm;
-pub struct MemoryManagementUnit;
+pub struct MemoryManagementUnit{
+    L1: L1TranslationTable, 
+    cache: A64CacheSet,
+}
 
 impl MemoryManagementUnit {
-    pub const fn new() -> Self {
-        Self {}
+    pub fn new() -> Self {
+        Self {
+            L1: TranslationTable::new(config::L1_VIRTUAL_ADDRESS as *mut L1Entry, config::ENTRIES_PER_TABLE),
+            cache: A64CacheSet::new().unwrap(),
+        }
     }
 
-    pub fn cache_info(&self) {
-        let a64_caches = A64CacheSet::new().unwrap();
-    } 
+    pub fn cache(&self) ->&A64CacheSet{
+        &self.cache
+    }
+
+
 
     fn is_4kb_page_supported(&self) -> bool {
         ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::TGran4) == 0
@@ -56,11 +64,14 @@ impl MemoryManagementUnit {
             println!("[MMU]: use 4kb frame size");
         }
 
+        println!("ASID size = {}", ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::ASIDBits));
+
         // Support physical memory up to 64GB
         TCR_EL1.write(
             TCR_EL1::IPS::Bits_32 /*pi4 has 4GB memory*/
                 + TCR_EL1::T0SZ.val(t0sz) 
-                + TCR_EL1::TBI0::Used /*Memory Taggging Extension(MTE) is enabled for Range0 */
+                + TCR_EL1::TBI0::Ignored /*Memory Taggging Extension(MTE) is not supported on pi */
+                + TCR_EL1::AS::ASID8Bits /* Sizeof ASID = 8 bits*/
                 + TCR_EL1::A1::TTBR0
                 + TCR_EL1::TG0::KiB_4
                 + TCR_EL1::SH0::Inner
@@ -105,21 +116,14 @@ impl MemoryManagementUnit {
     // all memory locations are treated as non-cacheable at reset
 
     #[inline(never)]
-    pub fn config(&self) -> Result<(), ErrorCode>{
-        self.cache_info();
+    pub fn init(&self) -> Result<(), ErrorCode>{
         //config tcr
         self.config_tcr_el1().unwrap();
         //config mair
         self.config_mair_el1();
         //set up initial mapping
-        //
-        let l1_table: L1TranslationTable =
-            TranslationTable::new(get_ttbr0() as *mut L1Entry, config::ENTRIES_PER_TABLE);
-        l1_table.set_up_init_mapping();
-        //barrier
-        barrier::isb(barrier::SY);
-            
 
+        L1TranslationTable::set_up_init_mapping();
             
         // Enable the MMU and turn on data and instruction caching.
         
@@ -131,18 +135,13 @@ impl MemoryManagementUnit {
         );
         
         barrier::isb(barrier::SY);
-        unsafe{
-            let l1: *const u64 = config::L1_VIRTUAL_ADDRESS as *const u64;
-            println!("Trying to access l1 page table through its virtual address {:#018x} after enabling mmu", config::L1_VIRTUAL_ADDRESS);
-            println!("the first entry of the l1 table: {}", *l1);
-        }
+
         ///
 
         Ok(())
     }
 }
 
-pub static MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
 #[cfg(test)] 
 #[allow(unused_imports,unused_variables,dead_code)]
@@ -151,6 +150,8 @@ pub static MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 use test_macros::kernel_test; 
  #[kernel_test] 
  fn test_mmu(){
-        MMU.config().unwrap();
+        let mmu = MemoryManagementUnit::new();
+        mmu.init().unwrap();
+
     }
 } 

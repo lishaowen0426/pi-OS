@@ -646,7 +646,8 @@ impl Descriptor {
     // UXN = PXN = 0: Does not effect the executability of subsequent tables
     // NS = 0: secure
     const fn Table_attr() -> u64 {
-        (0b0 << Self::NSTable)
+        (0b0 << Self::NSTable) // if NSTable = 1, subsequent entries are treated as non-global,
+        // regardless of its nG bit.
             | (0b01 << Self::APTable.start)
             | (0b0 << Self::UXNTable)
             | (0b0 << Self::PXNTable)

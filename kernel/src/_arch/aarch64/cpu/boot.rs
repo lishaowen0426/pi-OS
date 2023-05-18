@@ -26,7 +26,6 @@ global_asm!(
 
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;
-    static l1_page_table: u8;
 }
 
 #[inline(always)]
@@ -46,7 +45,6 @@ unsafe fn prepare_el2_to_el1() {
 
     ELR_EL2.set(crate::kernel_main as *const () as u64);
     SP_EL1.set(&__boot_core_stack_end_exclusive as *const u8 as u64);
-    TTBR0_EL1.set_baddr(&l1_page_table as *const _ as u64);
 }
 
 #[no_mangle]

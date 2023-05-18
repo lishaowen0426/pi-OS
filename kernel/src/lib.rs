@@ -42,6 +42,7 @@ pub mod utils;
 
 #[cfg(not(test))]
 use aarch64_cpu::registers::*;
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;
@@ -56,7 +57,18 @@ unsafe fn kernel_main() -> ! {
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 
-    memory::MMU.config().unwrap();
+    let exception_handler = exception::ExceptionHandler::new();
+    exception_handler.init().unwrap();
+
+    if ID_AA64MMFR2_EL1.read(ID_AA64MMFR2_EL1::CnP) == 1 {
+        println!("CnP is supported");
+        TTBR0_EL1.modify(TTBR0_EL1::CnP.val(1));
+    } else {
+        println!("CnP is not supported");
+    }
+
+    let mmu = memory::MemoryManagementUnit::new();
+    mmu.init().unwrap();
     println!("Working!");
 
     loop {}

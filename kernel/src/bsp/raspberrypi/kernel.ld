@@ -54,6 +54,7 @@ SECTIONS
         KEEP(*(.text._start))
         *(.text._start_arguments)
         *(.text._start_rust)
+        *(.text._exception)
         *(.text*)
     } :segment_code
 
@@ -87,6 +88,7 @@ SECTIONS
 
     .page_table(NOLOAD) : ALIGN(PAGE_SIZE)
     {
+        __l1_page_table_start = .;
         *(page_table);
     }: segment_table
 

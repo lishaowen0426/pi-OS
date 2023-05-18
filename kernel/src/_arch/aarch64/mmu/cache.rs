@@ -150,8 +150,6 @@ impl fmt::Display for A64CacheSet {
     }
 }
 
-pub struct A64TLB;
-
 impl A64CacheSet {
     pub fn new() -> Option<A64CacheSet> {
         let l1ip = L1InstPolicy::from(CTR_EL0.read(CTR_EL0::L1Ip) as u8);
@@ -348,6 +346,48 @@ impl A64CacheSet {
         self.ic_inalidate_va_range_pou(start, end);
     }
 }
+
+// All TLBs start at an IMPLEMENTATION DEFINED but UNKNOWN state
+// TLBs are disabled from reset.
+//
+// TLB maintenance instructions ensure that changes to the translation tables are reflected
+// correctly in those TLB caching structures.
+//
+// All entries that does not itself cause a fault can be cached. These include table entries
+// pointing to subsequent tables used in the translation.
+//
+// Whenever translation tables entries associated with a particular ASID are changed, the
+// corresponding entries must be invalidated from the TLB to ensure that these changes are visiable
+// to subsequent execution.
+//
+// Because a TLB never holds any entry that generates a fault, therefore, a change from an entry
+// that causes a fault to one that does not fault, does not require any TLB invalidation.
+
+pub struct A64TLB;
+
+impl A64TLB {
+    #[inline(always)]
+    fn concat_asid_va(va: VirtualAddress, asid: u8) -> u64 {
+        ((asid as u64) << 48) | ((va.value() as u64) >> 12)
+    }
+    pub fn invalidate_all() {
+        unsafe {
+            asm!("DSB ISHST", "TLBI VMALLE1", "DSB ISH", "ISB");
+        }
+    }
+    pub fn invalidate_asid(asid: u8) {
+        unsafe {
+            asm!("DSB ISHST", "TLBI ASIDE1, {}", "DSB ISH", "ISB", in(reg) ((asid as u64) << 48));
+        }
+    }
+    pub fn invalidate_va_asid(va: VirtualAddress, asid: u8) {
+        core::todo!();
+    }
+    pub fn invalidate_va(va: VirtualAddress) {
+        core::todo!();
+    }
+}
+
 #[cfg(test)]
 #[allow(unused_imports, unused_variables, dead_code)]
 mod tests {
