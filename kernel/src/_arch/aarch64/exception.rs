@@ -1,8 +1,8 @@
-use crate::{errno::ErrorCode, exception::PrivilegeLevel, println};
+use crate::{errno::ErrorCode, exception::PrivilegeLevel, memory, println};
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
 use tock_registers::{
-    interfaces::{Readable, Writeable},
+    interfaces::{ReadWriteable, Readable, Writeable},
     registers::InMemoryRegister,
 };
 
@@ -27,7 +27,7 @@ struct EsrEL1(InMemoryRegister<u64, ESR_EL1::Register>);
 impl fmt::Display for SpsrEL1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Raw value.
-        writeln!(f, "SPSR_EL1: {:#010x}", self.0.get())?;
+        writeln!(f, "SPSR_EL1 = {:#018x}", self.0.get())?;
 
         let to_flag_str = |x| -> _ {
             if x {
@@ -67,6 +67,9 @@ impl fmt::Display for SpsrEL1 {
             }
         };
 
+        writeln!(f, "      Software step:")?;
+        writeln!(f, "            SS  : {}", self.0.read(SPSR_EL1::SS),)?;
+
         writeln!(f, "      Exception handling state:")?;
         writeln!(
             f,
@@ -89,10 +92,25 @@ impl fmt::Display for SpsrEL1 {
             to_mask_str(self.0.is_set(SPSR_EL1::F))
         )?;
 
-        write!(
+        writeln!(
             f,
             "      Illegal Execution State (IL): {}",
             to_flag_str(self.0.is_set(SPSR_EL1::IL))
+        )?;
+
+        let to_source_str = |x| -> _ {
+            match x {
+                Some(SPSR_EL1::M::Value::EL0t) => "EL0 with SP0",
+                Some(SPSR_EL1::M::Value::EL1t) => "EL1 with SP0",
+                Some(SPSR_EL1::M::Value::EL1h) => "EL1 with SP1",
+                _ => "UNDEFINED",
+            }
+        };
+
+        write!(
+            f,
+            "      The exception was taken from {}",
+            to_source_str(self.0.read_as_enum(SPSR_EL1::M))
         )
     }
 }
@@ -107,7 +125,7 @@ impl EsrEL1 {
 impl fmt::Display for EsrEL1 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Raw print of whole register.
-        writeln!(f, "ESR_EL1: {:#010x}", self.0.get())?;
+        writeln!(f, "ESR_EL1: {:#018x}", self.0.get())?;
 
         // Raw print of exception class.
         write!(
@@ -142,7 +160,7 @@ struct ExceptionContext {
 
     elr_el1: u64,
     spsr_el1: SpsrEL1,
-    esr_el1: SpsrEL1,
+    esr_el1: EsrEL1,
 }
 impl fmt::Display for ExceptionContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -160,10 +178,10 @@ impl fmt::Display for ExceptionContext {
         for (i, reg) in self.gpr.iter().enumerate() {
             write!(f, "      x{: <2}: {: >#018x}{}", i, reg, alternating(i))?;
         }
-        writeln!(f, "lr = {:#018x}", self.lr)?;
-        writeln!(f, "ELR_EL1 = {:#018x}", self.elr_el1)?;
-        writeln!(f, "SPSR_EL1 = {}", self.spsr_el1)?;
-        write!(f, "ESR_EL1 = {}", self.esr_el1)
+        writeln!(f, "Link Reg = {:#018x}", self.lr)?;
+        writeln!(f, "ELR_EL1  = {:#018x}", self.elr_el1)?;
+        writeln!(f, "{}", self.spsr_el1)?;
+        write!(f, "{}", self.esr_el1)
     }
 }
 fn default_exception_handler(exc: &ExceptionContext) {
@@ -250,6 +268,12 @@ impl ExceptionHandler {
 
         unsafe {
             VBAR_EL1.set(&__exception_vector_start as *const _ as u64);
+            #[cfg(feature = "build_qemu")]
+            {
+                DAIF.modify(
+                    DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked,
+                );
+            }
             barrier::isb(barrier::SY);
         }
 
@@ -262,14 +286,42 @@ impl ExceptionHandler {
 mod tests {
     use super::*;
     use test_macros::kernel_test;
+    use tock_registers::{
+        interfaces::{ReadWriteable, Readable, Writeable},
+        registers::InMemoryRegister,
+    };
     #[kernel_test]
     fn test_exception() {
-        unsafe {
-            println!(
-                "exception vector base address = {:x}",
-                &__exception_vector_start as *const _ as usize
-            );
-        }
+        let mmu = memory::MemoryManagementUnit::new();
+        mmu.init().unwrap();
+        let exception_handler = ExceptionHandler::new();
+        exception_handler.init().unwrap();
+
+        let to_mask_str = |x| -> _ {
+            if x {
+                "Masked"
+            } else {
+                "Unmasked"
+            }
+        };
+
+        println!("      Exception handling state:");
+        println!(
+            "            Debug  (D): {}",
+            to_mask_str(DAIF.is_set(DAIF::D))
+        );
+        println!(
+            "            SError (A): {}",
+            to_mask_str(DAIF.is_set(DAIF::A))
+        );
+        println!(
+            "            IRQ    (I): {}",
+            to_mask_str(DAIF.is_set(DAIF::I))
+        );
+        println!(
+            "            FIQ    (F): {}",
+            to_mask_str(DAIF.is_set(DAIF::F))
+        );
 
         println!("Trying to trigger an exception..");
         let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
