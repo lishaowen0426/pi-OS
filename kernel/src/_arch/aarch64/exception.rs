@@ -1,4 +1,6 @@
-use crate::{errno::ErrorCode, exception::PrivilegeLevel, memory, println};
+use crate::{
+    errno::ErrorCode, exception::PrivilegeLevel, memory, println, println_0, println_1, println_2,
+};
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
 use tock_registers::{
@@ -323,7 +325,7 @@ mod tests {
             to_mask_str(DAIF.is_set(DAIF::F))
         );
 
-        println!("Trying to trigger an exception..");
+        println_0!("Trying to trigger an exception..");
         let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
         unsafe {
             core::ptr::read_volatile(big_addr as *mut u64);

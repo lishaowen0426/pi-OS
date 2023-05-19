@@ -74,7 +74,7 @@ impl MemoryManagementUnit {
                 + TCR_EL1::AS::ASID8Bits /* Sizeof ASID = 8 bits*/
                 + TCR_EL1::A1::TTBR0
                 + TCR_EL1::TG0::KiB_4
-                + TCR_EL1::SH0::Inner
+                + TCR_EL1::SH0::Inner /*AArch64 assumes all PEs use the same OS are in the same Inner Shareable domain*/
                 + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 //+ TCR_EL1::ORGN0::NonCacheable

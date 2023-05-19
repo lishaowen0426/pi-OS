@@ -54,6 +54,8 @@ unsafe fn kernel_main() -> ! {
     #[cfg(not(feature = "build_qemu"))]
     console::init_console();
 
+    println!("SPSel = {}", SPSel.read(SPSel::SP));
+
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 
