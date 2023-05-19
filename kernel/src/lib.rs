@@ -70,6 +70,11 @@ unsafe fn kernel_main() -> ! {
     let mmu = memory::MemoryManagementUnit::new();
     mmu.init().unwrap();
     println!("Working!");
+    println!("Trying to trigger an exception..");
+    let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
+    unsafe {
+        core::ptr::read_volatile(big_addr as *mut u64);
+    }
 
     loop {}
 }

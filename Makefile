@@ -93,6 +93,10 @@ RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
     -C link-arg=--script=$(KERNEL_LINKER_SCRIPT) \
 	--emit asm                                   
 
+RUSTFLAGS_TEST_UNIT = $(RUSTC_MISC_ARGS)                   \
+    -C link-arg=--library-path=./target/$(TARGET)/  \
+	-C link-arg=--library=:boot.o \
+    -C link-arg=--script=$(KERNEL_LINKER_SCRIPT_PATH) 
 
 RUSTFLAGS_DEBUG =  -C opt-level=0   -C debuginfo=2                               
 
@@ -157,7 +161,7 @@ endif
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) 
+.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 
 
 all: $(KERNEL_BIN)
@@ -303,10 +307,10 @@ define test_prepare
     @chmod +x target/kernel_test_runner.sh
 endef
 
-test_unit:
+test_unit: $(ASSEMBLED_BOOT)
 	$(call color_header, "Compiling unit test(s) - $(BSP)")
 	$(call test_prepare)
-	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(TEST_CMD) 
+	RUSTFLAGS="$(RUSTFLAGS_TEST_UNIT)" $(TEST_CMD) 
 
 
 

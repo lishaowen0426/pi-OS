@@ -16,13 +16,6 @@ use core::arch::global_asm;
 
 use aarch64_cpu::{asm, registers::*};
 use tock_registers::interfaces::Writeable;
-// Assembly counterpart to this file.
-#[cfg(test)]
-global_asm!(
-    include_str!("test-boot.s"),
-    CONST_CURRENTEL_EL2 = const 0x8,
-    CONST_CORE_ID_MASK = const 0b11
-);
 
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;

@@ -1,5 +1,5 @@
 use crate::{errno::ErrorCode, exception::PrivilegeLevel, println};
-use aarch64_cpu::registers::*;
+use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
 use tock_registers::{
     interfaces::{Readable, Writeable},
@@ -247,6 +247,34 @@ impl ExceptionHandler {
                 &__exception_vector_start as *const _ as usize
             );
         }
+
+        unsafe {
+            VBAR_EL1.set(&__exception_vector_start as *const _ as u64);
+            barrier::isb(barrier::SY);
+        }
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(unused_imports, unused_variables, dead_code)]
+mod tests {
+    use super::*;
+    use test_macros::kernel_test;
+    #[kernel_test]
+    fn test_exception() {
+        unsafe {
+            println!(
+                "exception vector base address = {:x}",
+                &__exception_vector_start as *const _ as usize
+            );
+        }
+
+        println!("Trying to trigger an exception..");
+        let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
+        unsafe {
+            core::ptr::read_volatile(big_addr as *mut u64);
+        }
     }
 }
