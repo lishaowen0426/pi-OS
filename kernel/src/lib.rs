@@ -42,7 +42,11 @@ pub mod utils;
 
 #[cfg(not(test))]
 use aarch64_cpu::registers::*;
+use core::sync::atomic::{AtomicBool, Ordering};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+
+use cpu::registers::*;
+use synchronization::primitive::SpinLock;
 
 extern "C" {
     static __boot_core_stack_end_exclusive: u8;
@@ -72,6 +76,11 @@ unsafe fn kernel_main() -> ! {
     let mmu = memory::MemoryManagementUnit::new();
     mmu.init().unwrap();
     println!("Working!");
+
+    println!(
+        "Exclusive reservation granule = {}",
+        (1 << CTR_EL0.read(CTR_EL0::ERG)) * memory::config::WORD_SIZE
+    );
     println!("Trying to trigger an exception..");
     let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
     unsafe {

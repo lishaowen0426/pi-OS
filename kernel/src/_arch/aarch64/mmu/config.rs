@@ -1,6 +1,6 @@
 /// Only support 4K granule and the lookup starts from level 1
 #[allow(dead_code)]
-pub(super) mod config {
+pub mod config {
     use core::ops::Range;
 
     pub const WORD_SIZE: usize = 4; // 32bits

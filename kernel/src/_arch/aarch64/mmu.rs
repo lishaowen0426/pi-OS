@@ -12,14 +12,14 @@ mod translation_table;
 #[path = "mmu/translation_entry.rs"]
 mod translation_entry;
 #[path = "mmu/config.rs"]
-mod mmu_config;
+pub mod mmu_config;
 #[path = "mmu/cache.rs"]
 mod cache;
 
 #[path = "mmu/frame_allocator.rs"]
 mod frame_allocator;
 
-use mmu_config::config;
+pub use mmu_config::config;
 use translation_table::*;
 use translation_entry::*;
 use cache::*;
