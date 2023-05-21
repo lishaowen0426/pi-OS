@@ -39,6 +39,7 @@ cfg-if = "1.0"
 test-types = {path = "../libraries/test-types"}
 zerocopy = "0.6.1"
 test-macros = {path = "../libraries/test-macros"}
+spin = "0.9.8"
 
 # Plaftform specific dependencies
 [target.'cfg(target_arch = "aarch64")'.dependencies]

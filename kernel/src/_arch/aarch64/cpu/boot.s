@@ -55,6 +55,7 @@ _start:
     b.ne        .L_prepare_l1_page_table
 
 
+    bl init_mini_uart
     b _start_rust
 
 

@@ -1,41 +1,44 @@
-use crate::{bsp::device_driver::MINI_UART, synchronization::Spinlock};
+use crate::{bsp::device_driver::MiniUartInner, errno::ErrorCode};
+use core::fmt;
+use spin::{mutex::SpinMutex, once::Once};
 
-pub mod interface {
-    pub use core::fmt;
+pub struct Console<T>
+where
+    T: fmt::Write,
+{
+    io: SpinMutex<T>,
+}
 
-    pub trait Console {
-        fn init(&self);
-        fn _write_str(&self, s: &str) -> fmt::Result;
-        fn _write_char(&self, c: char) -> fmt::Result;
-        fn _write_fmt(&self, args: fmt::Arguments) -> fmt::Result;
-        fn _flush(&self);
-        fn _read_char(&self) -> char;
-        fn _clear_rx(&self);
-        fn _chars_written(&self) -> usize;
-        fn _chars_read(&self) -> usize;
+impl<T> Console<T>
+where
+    T: fmt::Write,
+{
+    pub fn new(inner: T) -> Self {
+        Self {
+            io: SpinMutex::new(inner),
+        }
+    }
+    pub fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result {
+        write!(self.io.lock(), "{}", args)
     }
 }
 
-pub static CONSOLE: Spinlock<&'static (dyn interface::Console + Sync)> = Spinlock::new(&MINI_UART);
+pub static CONSOLE: Once<Console<MiniUartInner>> = Once::new();
 
-/// DEBUG_CONSOLE is unsafe(i.e., without lock)
-/// println_debug! uses DEBUG_CONSOLE to directly write to mini_uart
-pub static mut DEBUG_CONSOLE: &'static dyn interface::Console = &MINI_UART;
-
-pub fn init_debug_console() {
-    unsafe {
-        DEBUG_CONSOLE.init();
-    }
+pub fn init() -> Result<(), ErrorCode> {
+    CONSOLE.call_once(|| Console {
+        io: SpinMutex::new(MiniUartInner::new()),
+    });
+    Ok(())
 }
 
+#[cfg(feature = "build_qemu")]
 pub struct QemuConsole;
 
-impl QemuConsole {
-    pub const fn new() -> Self {
-        Self {}
-    }
-}
+#[cfg(feature = "build_qemu")]
+pub static mut QEMU_CONSOLE: QemuConsole = QemuConsole;
 
+#[cfg(feature = "build_qemu")]
 impl core::fmt::Write for QemuConsole {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for c in s.chars() {
@@ -47,14 +50,4 @@ impl core::fmt::Write for QemuConsole {
     }
 }
 
-pub static mut QEMU_CONSOLE: QemuConsole = QemuConsole::new();
-
-#[inline(always)]
-pub fn init_console() {
-    CONSOLE.lock().init();
-}
-
-#[inline(always)]
-pub fn console() -> &'static dyn interface::Console {
-    *CONSOLE.lock()
-}
+pub use crate::bsp::device_driver::UNSAFE_MINI_UART as UNSAFE_CONSOLE;

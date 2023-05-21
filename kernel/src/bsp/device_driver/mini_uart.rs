@@ -3,6 +3,25 @@ use crate::{
     console,
     cpu::nop,
 };
+fn mu_baud_reg(clock: u64, baud: u32) -> u32 {
+    ((clock / (baud * 8) as u64) - 1) as u32
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn init_mini_uart() {
+    mmio_write(AUX_ENABLES, 1); // enable UART1
+    mmio_write(AUX_MU_IER_REG, 0);
+    mmio_write(AUX_MU_CNTL_REG, 0);
+    mmio_write(AUX_MU_LCR_REG, 3); // 8 bits
+    mmio_write(AUX_MU_MCR_REG, 0);
+    mmio_write(AUX_MU_IER_REG, 0);
+    mmio_write(AUX_MU_IIR_REG, 0xC6); // disable interrupts
+    mmio_write(AUX_MU_BAUD_REG, mu_baud_reg(CLOCK, BAUD_RATE));
+    mmio_write(AUX_MU_CNTL_REG, 3); // enable RX/TX
+                                    //
+                                    // self.clear_rx();
+    return;
+}
 
 use core::cell::SyncUnsafeCell;
 
@@ -26,13 +45,13 @@ pub enum BlockingMode {
     NonBlocking,
 }
 
-struct MiniUartInner {
+pub struct MiniUartInner {
     chars_read: usize,
     chars_written: usize,
 }
 
 impl MiniUartInner {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             chars_read: 0,
             chars_written: 0,
@@ -40,11 +59,11 @@ impl MiniUartInner {
     }
 }
 
-pub struct MiniUart {
+pub struct UnsafeMiniUart {
     inner: SyncUnsafeCell<MiniUartInner>,
 }
 
-impl MiniUart {
+impl UnsafeMiniUart {
     pub const fn new() -> Self {
         Self {
             inner: SyncUnsafeCell::new(MiniUartInner::new()),
@@ -53,24 +72,6 @@ impl MiniUart {
 }
 
 impl MiniUartInner {
-    fn mu_baud_reg(clock: u64, baud: u32) -> u32 {
-        ((clock / (baud * 8) as u64) - 1) as u32
-    }
-
-    fn init(&mut self) {
-        mmio_write(AUX_ENABLES, 1); // enable UART1
-        mmio_write(AUX_MU_IER_REG, 0);
-        mmio_write(AUX_MU_CNTL_REG, 0);
-        mmio_write(AUX_MU_LCR_REG, 3); // 8 bits
-        mmio_write(AUX_MU_MCR_REG, 0);
-        mmio_write(AUX_MU_IER_REG, 0);
-        mmio_write(AUX_MU_IIR_REG, 0xC6); // disable interrupts
-        mmio_write(AUX_MU_BAUD_REG, Self::mu_baud_reg(CLOCK, BAUD_RATE));
-        mmio_write(AUX_MU_CNTL_REG, 3); // enable RX/TX
-                                        //
-                                        // self.clear_rx();
-    }
-
     fn is_writeable(&self) -> bool {
         mmio_is_set(AUX_MU_LSR_REG, 5)
     }
@@ -126,46 +127,11 @@ impl core::fmt::Write for MiniUartInner {
     }
 }
 
-impl console::interface::Console for MiniUart {
-    fn init(&self) {
-        let data = unsafe { &mut *self.inner.get() };
-        data.init()
-    }
-    fn _write_str(&self, s: &str) -> fmt::Result {
+impl UnsafeMiniUart {
+    pub fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result {
         use core::fmt::Write;
-        let data = unsafe { &mut *self.inner.get() };
-        data.write_str(s)
-    }
-    fn _write_char(&self, c: char) -> fmt::Result {
-        let data = unsafe { &mut *self.inner.get() };
-        data.write_char(c)
-    }
-    fn _write_fmt(&self, args: fmt::Arguments) -> fmt::Result {
-        use core::fmt::Write;
-        let data = unsafe { &mut *self.inner.get() };
-        data.write_fmt(args)
-    }
-    fn _flush(&self) {
-        let data = unsafe { &mut *self.inner.get() };
-        data.flush()
-    }
-
-    fn _read_char(&self) -> char {
-        let data = unsafe { &mut *self.inner.get() };
-        data.read_char(BlockingMode::Blocking).unwrap()
-    }
-    fn _clear_rx(&self) {
-        let data = unsafe { &mut *self.inner.get() };
-        while data.read_char(BlockingMode::NonBlocking).is_some() {}
-    }
-    fn _chars_written(&self) -> usize {
-        let data = unsafe { &mut *self.inner.get() };
-        data.chars_written
-    }
-    fn _chars_read(&self) -> usize {
-        let data = unsafe { &mut *self.inner.get() };
-        data.chars_read
+        unsafe { self.inner.get().as_mut().unwrap().write_fmt(args) }
     }
 }
 
-pub static MINI_UART: MiniUart = MiniUart::new();
+pub static UNSAFE_MINI_UART: UnsafeMiniUart = UnsafeMiniUart::new();

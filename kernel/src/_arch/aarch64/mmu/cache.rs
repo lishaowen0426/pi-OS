@@ -1,5 +1,5 @@
 use super::{address::*, config};
-use crate::{cpu::registers::*, errno::*, println, type_enum, utils::bitfields::Bitfields};
+use crate::{cpu::registers::*, errno::*, type_enum, unsafe_println, utils::bitfields::Bitfields};
 use aarch64_cpu::registers::*;
 use core::{arch::asm, fmt};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -155,7 +155,6 @@ impl A64CacheSet {
         let l1ip = L1InstPolicy::from(CTR_EL0.read(CTR_EL0::L1Ip) as u8);
         let dminline = (1 << (CTR_EL0.read(CTR_EL0::DminLine))) * config::WORD_SIZE;
         let iminline = (1 << (CTR_EL0.read(CTR_EL0::IminLine))) * config::WORD_SIZE;
-        println!("MTE2: {}", ID_AA64PFR1_EL1.is_mte2_supported());
 
         // Cache Level ID Register: CLIDR_EL1
         let louu = CLIDR_EL1.read(CLIDR_EL1::LoUU);
@@ -396,6 +395,6 @@ mod tests {
     #[kernel_test]
     fn test_a64cache_tlb() {
         let a64_caches = A64CacheSet::new().unwrap();
-        println!("{}", a64_caches);
+        unsafe_println!("{}", a64_caches);
     }
 }

@@ -1,21 +1,18 @@
-use crate::console::QEMU_CONSOLE;
-
-use crate::console::{CONSOLE, DEBUG_CONSOLE};
+use crate::console::{CONSOLE, UNSAFE_CONSOLE};
 use core::fmt;
-
-pub fn _print_debug(args: fmt::Arguments) {
-    unsafe {
-        DEBUG_CONSOLE._write_fmt(args).unwrap();
-    }
-}
 
 #[cfg(not(feature = "build_qemu"))]
 pub fn _print(args: fmt::Arguments) {
-    let locked = CONSOLE.lock();
-    locked._write_fmt(args).unwrap();
+    CONSOLE.get().unwrap().write_fmt(args).unwrap();
 }
+#[cfg(not(feature = "build_qemu"))]
+pub fn _unsafe_print(args: fmt::Arguments) {
+    UNSAFE_CONSOLE.write_fmt(args).unwrap();
+}
+
 #[cfg(feature = "build_qemu")]
 pub fn _print(args: fmt::Arguments) {
+    use crate::console::QEMU_CONSOLE;
     use core::fmt::Write;
     unsafe {
         QEMU_CONSOLE.write_fmt(args).unwrap();
@@ -26,6 +23,10 @@ pub fn _print(args: fmt::Arguments) {
 macro_rules! print {
     ($($arg:tt)*) => ($crate::print::_print(format_args!($($arg)*)));
 }
+#[macro_export]
+macro_rules! unsafe_print {
+    ($($arg:tt)*) => ($crate::print::_unsafe_print(format_args!($($arg)*)));
+}
 
 #[macro_export]
 macro_rules! println {
@@ -34,12 +35,11 @@ macro_rules! println {
         $crate::print::_print(format_args_nl!($($arg)*));
     })
 }
-
 #[macro_export]
-macro_rules! println_debug {
-    () => ($crate::print::_print_debug(format_args_nl!($($arg)*)));
+macro_rules! unsafe_println {
+    () => ($crate::print::_unsafe_print("\n"));
     ($($arg:tt)*) => ({
-        $crate::print::_print_debug(format_args_nl!($($arg)*));
+        $crate::print::_unsafe_print(format_args_nl!($($arg)*));
     })
 }
 

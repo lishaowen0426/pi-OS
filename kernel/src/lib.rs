@@ -26,55 +26,45 @@
 #![reexport_test_harness_main = "test_main"]
 #![test_runner(crate::test_runner)]
 
+mod bsp;
+mod console;
+mod cpu;
+mod driver;
+mod errno;
+mod exception;
+mod macros;
+mod memory;
 mod panic_wait;
+mod print;
 mod synchronization;
-
-pub mod bsp;
-pub mod console;
-pub mod cpu;
-pub mod driver;
-pub mod errno;
-pub mod exception;
-pub mod macros;
-pub mod memory;
-pub mod print;
-pub mod utils;
-
-#[cfg(not(test))]
-use aarch64_cpu::registers::*;
-use core::sync::atomic::{AtomicBool, Ordering};
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+mod utils;
 
 use cpu::registers::*;
-use synchronization::primitive::SpinLock;
-
-extern "C" {
-    static __boot_core_stack_end_exclusive: u8;
-}
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[cfg(not(test))]
 #[no_mangle]
 unsafe fn kernel_main() -> ! {
-    #[cfg(not(feature = "build_qemu"))]
-    console::init_console();
-
-    println!("SPSel = {}", SPSel.read(SPSel::SP));
+    use aarch64_cpu::registers::*;
+    unsafe_println!("SPSel = {}", SPSel.read(SPSel::SP));
 
     let (_, el) = exception::current_privilege_level();
-    println!("Current privilege level: {}", el);
+    unsafe_println!("Current privilege level: {}", el);
 
     let exception_handler = exception::ExceptionHandler::new();
     exception_handler.init().unwrap();
 
     if ID_AA64MMFR2_EL1.read(ID_AA64MMFR2_EL1::CnP) == 1 {
-        println!("CnP is supported");
+        unsafe_println!("CnP is supported");
         TTBR0_EL1.modify(TTBR0_EL1::CnP.val(1));
     } else {
-        println!("CnP is not supported");
+        unsafe_println!("CnP is not supported");
     }
 
     let mmu = memory::MemoryManagementUnit::new();
     mmu.init().unwrap();
+
+    console::init();
     println!("Working!");
 
     println!(

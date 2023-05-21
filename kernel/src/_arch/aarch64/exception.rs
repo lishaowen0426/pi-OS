@@ -1,5 +1,6 @@
 use crate::{
-    errno::ErrorCode, exception::PrivilegeLevel, memory, println, println_0, println_1, println_2,
+    errno::ErrorCode, exception::PrivilegeLevel, memory, println_0, println_1, println_2,
+    unsafe_println,
 };
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
@@ -262,7 +263,7 @@ impl ExceptionHandler {
     }
     pub fn init(&self) -> Result<(), ErrorCode> {
         unsafe {
-            println!(
+            unsafe_println!(
                 "exception vector base address = {:x}",
                 &__exception_vector_start as *const _ as usize
             );
@@ -307,25 +308,25 @@ mod tests {
             }
         };
 
-        println!("      Exception handling state:");
-        println!(
+        unsafe_println!("      Exception handling state:");
+        unsafe_println!(
             "            Debug  (D): {}",
             to_mask_str(DAIF.is_set(DAIF::D))
         );
-        println!(
+        unsafe_println!(
             "            SError (A): {}",
             to_mask_str(DAIF.is_set(DAIF::A))
         );
-        println!(
+        unsafe_println!(
             "            IRQ    (I): {}",
             to_mask_str(DAIF.is_set(DAIF::I))
         );
-        println!(
+        unsafe_println!(
             "            FIQ    (F): {}",
             to_mask_str(DAIF.is_set(DAIF::F))
         );
 
-        println_0!("Trying to trigger an exception..");
+        unsafe_println_0!("Trying to trigger an exception..");
         let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
         unsafe {
             core::ptr::read_volatile(big_addr as *mut u64);

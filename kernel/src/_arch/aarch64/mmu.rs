@@ -1,9 +1,10 @@
 use crate::{
     errno::{ErrorCode, EAGAIN},
-    println,
+    unsafe_println,
 };
 use aarch64_cpu::{asm::barrier,registers::*};
 use tock_registers::interfaces::{Readable, Writeable, ReadWriteable};
+use spin::{mutex::SpinMutex, once::Once};
 
 #[path = "mmu/address.rs"]
 mod address;
@@ -53,7 +54,7 @@ impl MemoryManagementUnit {
         // currently just identity map
         let t0sz: u64 = 16 + 9; // start from level 1
 
-        println!(
+        unsafe_println!(
             "[MMU]: TTBR0: 0x0 - {:#x}",
             u64::pow(2, (64 - t0sz) as u32) - 1
         );
@@ -61,10 +62,11 @@ impl MemoryManagementUnit {
         if !self.is_4kb_page_supported() {
             return Err(EAGAIN);
         } else {
-            println!("[MMU]: use 4kb frame size");
+            unsafe_println!("[MMU]: use 4kb frame size");
         }
 
-        println!("ASID size = {}", ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::ASIDBits));
+        unsafe_println!("ASID size = {}", ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::ASIDBits));
+        
 
         // Support physical memory up to 64GB
         TCR_EL1.write(
@@ -77,8 +79,6 @@ impl MemoryManagementUnit {
                 + TCR_EL1::SH0::Inner /*AArch64 assumes all PEs use the same OS are in the same Inner Shareable domain*/
                 + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-                //+ TCR_EL1::ORGN0::NonCacheable
-                //+ TCR_EL1::IRGN0::NonCacheable
                 + TCR_EL1::EPD1::DisableTTBR1Walks          + TCR_EL1::EPD0::EnableTTBR0Walks,
         );
         Ok(())
@@ -99,13 +99,7 @@ impl MemoryManagementUnit {
         );
         
         
-       /* 
-        MAIR_EL1.write(
-            MAIR_EL1::Attr1_Normal_Outer::NonCacheable
-                + MAIR_EL1::Attr1_Normal_Inner::NonCacheable
-                + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
-        );
-        */
+
         
         
         
@@ -123,6 +117,7 @@ impl MemoryManagementUnit {
         self.config_mair_el1();
         //set up initial mapping
 
+        
         L1TranslationTable::set_up_init_mapping();
             
         // Enable the MMU and turn on data and instruction caching.
@@ -135,6 +130,7 @@ impl MemoryManagementUnit {
         );
         
         barrier::isb(barrier::SY);
+        
 
         ///
 
