@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, Ident, ItemEnum, ItemFn};
+use syn::{parse_macro_input, Ident,  ItemFn};
 
 #[proc_macro_attribute]
 pub fn kernel_test(_attr: TokenStream, input: TokenStream) -> TokenStream {

@@ -1,6 +1,9 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(dead_code)]
 #![allow(incomplete_features)]
+#![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
+#![allow(unused_macros)]
 #![feature(asm_const)]
 #![feature(const_option)]
 #![feature(ptr_from_ref)]
@@ -40,7 +43,7 @@ mod synchronization;
 mod utils;
 
 use cpu::registers::*;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable};
 
 #[cfg(not(test))]
 #[no_mangle]
@@ -51,8 +54,7 @@ unsafe fn kernel_main() -> ! {
     let (_, el) = exception::current_privilege_level();
     unsafe_println!("Current privilege level: {}", el);
 
-    let exception_handler = exception::ExceptionHandler::new();
-    exception_handler.init().unwrap();
+    exception::init().unwrap();
 
     if ID_AA64MMFR2_EL1.read(ID_AA64MMFR2_EL1::CnP) == 1 {
         unsafe_println!("CnP is supported");
@@ -61,10 +63,8 @@ unsafe fn kernel_main() -> ! {
         unsafe_println!("CnP is not supported");
     }
 
-    let mmu = memory::MemoryManagementUnit::new();
-    mmu.init().unwrap();
-
-    console::init();
+    memory::init().unwrap();
+    console::init().unwrap();
     println!("Working!");
 
     println!(
@@ -72,7 +72,7 @@ unsafe fn kernel_main() -> ! {
         (1 << CTR_EL0.read(CTR_EL0::ERG)) * memory::config::WORD_SIZE
     );
     println!("Trying to trigger an exception..");
-    let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
+    let big_addr: u64 = 8 * 1024 * 1024 * 1024;
     unsafe {
         core::ptr::read_volatile(big_addr as *mut u64);
     }

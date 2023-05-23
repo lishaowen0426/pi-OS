@@ -1,11 +1,8 @@
-use crate::{
-    errno::ErrorCode, exception::PrivilegeLevel, memory, println_0, println_1, println_2,
-    unsafe_println,
-};
+use crate::{errno::ErrorCode, exception::PrivilegeLevel, unsafe_println};
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
 use tock_registers::{
-    interfaces::{ReadWriteable, Readable, Writeable},
+    interfaces::{Readable, Writeable},
     registers::InMemoryRegister,
 };
 
@@ -255,39 +252,33 @@ extern "C" fn lower_aarch32_serror(e: &mut ExceptionContext) {
     default_exception_handler(e);
 }
 
-pub struct ExceptionHandler;
-
-impl ExceptionHandler {
-    pub fn new() -> Self {
-        Self {}
+pub fn init() -> Result<(), ErrorCode> {
+    unsafe {
+        unsafe_println!(
+            "exception vector base address = {:x}",
+            &__exception_vector_start as *const _ as usize
+        );
     }
-    pub fn init(&self) -> Result<(), ErrorCode> {
-        unsafe {
-            unsafe_println!(
-                "exception vector base address = {:x}",
-                &__exception_vector_start as *const _ as usize
+
+    unsafe {
+        VBAR_EL1.set(&__exception_vector_start as *const _ as u64);
+        #[cfg(feature = "build_qemu")]
+        {
+            DAIF.modify(
+                DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked,
             );
         }
-
-        unsafe {
-            VBAR_EL1.set(&__exception_vector_start as *const _ as u64);
-            #[cfg(feature = "build_qemu")]
-            {
-                DAIF.modify(
-                    DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked,
-                );
-            }
-            barrier::isb(barrier::SY);
-        }
-
-        Ok(())
+        barrier::isb(barrier::SY);
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
 #[allow(unused_imports, unused_variables, dead_code)]
 mod tests {
     use super::*;
+    use crate::{unsafe_println, unsafe_println_0};
     use test_macros::kernel_test;
     use tock_registers::{
         interfaces::{ReadWriteable, Readable, Writeable},
@@ -295,8 +286,8 @@ mod tests {
     };
     #[kernel_test]
     fn test_exception() {
-        let mmu = memory::MemoryManagementUnit::new();
-        mmu.init().unwrap();
+        memory::init().unwrap();
+
         let exception_handler = ExceptionHandler::new();
         exception_handler.init().unwrap();
 

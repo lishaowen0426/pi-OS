@@ -1,6 +1,6 @@
 use crate::{__read_raw, __write_raw, sys_coproc_read_raw, sys_coproc_write_raw};
 use tock_registers::{
-    interfaces::{ReadWriteable, Readable, Writeable},
+    interfaces::{Readable, Writeable},
     register_bitfields,
 };
 register_bitfields! {u64,

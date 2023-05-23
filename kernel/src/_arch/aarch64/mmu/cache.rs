@@ -1,8 +1,8 @@
 use super::{address::*, config};
-use crate::{cpu::registers::*, errno::*, type_enum, unsafe_println, utils::bitfields::Bitfields};
+use crate::{cpu::registers::*, type_enum, utils::bitfields::Bitfields};
 use aarch64_cpu::registers::*;
 use core::{arch::asm, fmt};
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable};
 
 // Ways
 // +------+  +------+  +------+  +------+
@@ -261,12 +261,9 @@ impl A64CacheSet {
     }
     #[inline(always)]
     pub fn ic_inalidate_va_range_pou(&self, start: VirtualAddress, end: VirtualAddress) {
-        start
-            .iter_to(self.iminline, end)
-            .unwrap()
-            .for_each(|va| unsafe {
-                self.ic_inalidate_va_pou(va);
-            });
+        start.iter_to(self.iminline, end).unwrap().for_each(|va| {
+            self.ic_inalidate_va_pou(va);
+        });
     }
 
     // Cache maintenance instructions operating on VA might fault since
@@ -279,12 +276,9 @@ impl A64CacheSet {
     }
     #[inline(always)]
     pub fn dc_invalidate_va_range_poc(&self, start: VirtualAddress, end: VirtualAddress) {
-        start
-            .iter_to(self.dminline, end)
-            .unwrap()
-            .for_each(|va| unsafe {
-                self.dc_invalidate_va_poc(va);
-            });
+        start.iter_to(self.dminline, end).unwrap().for_each(|va| {
+            self.dc_invalidate_va_poc(va);
+        });
     }
     #[inline(always)]
     pub fn dc_clean_va_poc(&self, va: VirtualAddress) {
@@ -294,12 +288,9 @@ impl A64CacheSet {
     }
     #[inline(always)]
     pub fn dc_clean_va_range_poc(&self, start: VirtualAddress, end: VirtualAddress) {
-        start
-            .iter_to(self.dminline, end)
-            .unwrap()
-            .for_each(|va| unsafe {
-                self.dc_clean_va_poc(va);
-            });
+        start.iter_to(self.dminline, end).unwrap().for_each(|va| {
+            self.dc_clean_va_poc(va);
+        });
     }
     #[inline(always)]
     pub fn dc_clean_va_pou(&self, va: VirtualAddress) {
@@ -309,12 +300,9 @@ impl A64CacheSet {
     }
     #[inline(always)]
     pub fn dc_clean_va_range_pou(&self, start: VirtualAddress, end: VirtualAddress) {
-        start
-            .iter_to(self.dminline, end)
-            .unwrap()
-            .for_each(|va| unsafe {
-                self.dc_clean_va_pou(va);
-            });
+        start.iter_to(self.dminline, end).unwrap().for_each(|va| {
+            self.dc_clean_va_pou(va);
+        });
     }
 
     #[inline(always)]
@@ -325,12 +313,9 @@ impl A64CacheSet {
     }
     #[inline(always)]
     pub fn dc_clean_invalidate_va_range_poc(&self, start: VirtualAddress, end: VirtualAddress) {
-        start
-            .iter_to(self.dminline, end)
-            .unwrap()
-            .for_each(|va| unsafe {
-                self.dc_clean_invalidate_va_poc(va);
-            });
+        start.iter_to(self.dminline, end).unwrap().for_each(|va| {
+            self.dc_clean_invalidate_va_poc(va);
+        });
     }
 
     // Sometimes we don't know or care whether the address is data or instruction
@@ -379,10 +364,10 @@ impl A64TLB {
             asm!("DSB ISHST", "TLBI ASIDE1, {}", "DSB ISH", "ISB", in(reg) ((asid as u64) << 48));
         }
     }
-    pub fn invalidate_va_asid(va: VirtualAddress, asid: u8) {
+    pub fn invalidate_va_asid(_va: VirtualAddress, _asid: u8) {
         core::todo!();
     }
-    pub fn invalidate_va(va: VirtualAddress) {
+    pub fn invalidate_va(_va: VirtualAddress) {
         core::todo!();
     }
 }
