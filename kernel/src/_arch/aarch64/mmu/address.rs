@@ -7,86 +7,6 @@ use core::{
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
-#[allow(non_snake_case, dead_code)]
-pub mod AddressEdit {
-    use super::config;
-
-    pub fn is_4K_aligned(addr: usize) -> bool {
-        (addr & config::ALIGN_4K) == addr
-    }
-    pub fn is_16K_aligned(addr: usize) -> bool {
-        (addr & config::ALIGN_16K) == addr
-    }
-    pub fn is_64K_aligned(addr: usize) -> bool {
-        (addr & config::ALIGN_64K) == addr
-    }
-    pub fn is_2M_aligned(addr: usize) -> bool {
-        (addr & config::ALIGN_2M) == addr
-    }
-    pub fn is_1G_aligned(addr: usize) -> bool {
-        (addr & config::ALIGN_1G) == addr
-    }
-    pub fn is_aligned_to(addr: usize, alignment: usize) -> bool {
-        (addr & (!(alignment - 1))) == addr
-    }
-
-    pub fn shift_4K(addr: usize) -> usize {
-        addr >> config::SHIFT_4K
-    }
-    pub fn shift_16K(addr: usize) -> usize {
-        addr >> config::SHIFT_16K
-    }
-    pub fn shift_64K(addr: usize) -> usize {
-        addr >> config::SHIFT_64K
-    }
-    pub fn shift_2M(addr: usize) -> usize {
-        addr >> config::SHIFT_2M
-    }
-    pub fn shift_1G(addr: usize) -> usize {
-        addr >> config::SHIFT_1G
-    }
-
-    pub fn align_to_4K_up(addr: usize) -> usize {
-        addr & config::ALIGN_4K
-    }
-    pub fn align_to_16K_up(addr: usize) -> usize {
-        addr & config::ALIGN_16K
-    }
-    pub fn align_to_64K_up(addr: usize) -> usize {
-        addr & config::ALIGN_64K
-    }
-    pub fn align_to_2M_up(addr: usize) -> usize {
-        addr & config::ALIGN_2M
-    }
-    pub fn align_to_1G_up(addr: usize) -> usize {
-        addr & config::ALIGN_1G
-    }
-
-    pub fn align_up(addr: usize, alignment: usize) -> usize {
-        let align = !(alignment - 1);
-        addr & align
-    }
-
-    pub fn align_to_4K_down(addr: usize) -> usize {
-        (addr + config::MASK_4K) & config::ALIGN_4K
-    }
-    pub fn align_to_16K_down(addr: usize) -> usize {
-        (addr + config::MASK_16K) & config::ALIGN_16K
-    }
-    pub fn align_to_64K_down(addr: usize) -> usize {
-        (addr + config::MASK_64K) & config::ALIGN_64K
-    }
-    pub fn align_to_2M_down(addr: usize) -> usize {
-        (addr + config::MASK_2M) & config::ALIGN_2M
-    }
-    pub fn align_to_1G_down(addr: usize) -> usize {
-        (addr + config::MASK_1G) & config::ALIGN_1G
-    }
-    pub fn align_down(addr: usize, alignment: usize) -> usize {
-        let align = !(alignment - 1);
-        (addr + alignment - 1) & align
-    }
-}
 macro_rules! declare_address {
     ($name:ident, $tt:ty, $lit: literal $(,)?) => {
         #[derive(Default, Eq, PartialEq, Ord, PartialOrd, Clone, Copy)]
@@ -164,61 +84,61 @@ macro_rules! impl_address {
                 (self.0 & (!(alignment - 1))) == self.0
             }
 
-            pub fn shift_4K(&self) -> usize {
-                self.0 >> config::SHIFT_4K
+            pub fn shift_4K(&self) -> Self {
+                Self(self.0 >> config::SHIFT_4K)
             }
-            pub fn shift_16K(&self) -> usize {
-                self.0 >> config::SHIFT_16K
+            pub fn shift_16K(&self) -> Self {
+                Self(self.0 >> config::SHIFT_16K)
             }
-            pub fn shift_64K(&self) -> usize {
-                self.0 >> config::SHIFT_64K
+            pub fn shift_64K(&self) -> Self {
+                Self(self.0 >> config::SHIFT_64K)
             }
-            pub fn shift_2M(&self) -> usize {
-                self.0 >> config::SHIFT_2M
+            pub fn shift_2M(&self) -> Self {
+                Self(self.0 >> config::SHIFT_2M)
             }
-            pub fn shift_1G(&self) -> usize {
-                self.0 >> config::SHIFT_1G
-            }
-
-            pub fn align_to_4K_up(&self) -> usize {
-                self.0 & config::ALIGN_4K
-            }
-            pub fn align_to_16K_up(&self) -> usize {
-                self.0 & config::ALIGN_16K
-            }
-            pub fn align_to_64K_up(&self) -> usize {
-                self.0 & config::ALIGN_64K
-            }
-            pub fn align_to_2M_up(&self) -> usize {
-                self.0 & config::ALIGN_2M
-            }
-            pub fn align_to_1G_up(&self) -> usize {
-                self.0 & config::ALIGN_1G
+            pub fn shift_1G(&self) -> Self {
+                Self(self.0 >> config::SHIFT_1G)
             }
 
-            pub fn align_up(&self, alignment: usize) -> usize {
+            pub fn align_to_4K_up(&self) -> Self {
+                Self(self.0 & config::ALIGN_4K)
+            }
+            pub fn align_to_16K_up(&self) -> Self {
+                Self(self.0 & config::ALIGN_16K)
+            }
+            pub fn align_to_64K_up(&self) -> Self {
+                Self(self.0 & config::ALIGN_64K)
+            }
+            pub fn align_to_2M_up(&self) -> Self {
+                Self(self.0 & config::ALIGN_2M)
+            }
+            pub fn align_to_1G_up(&self) -> Self {
+                Self(self.0 & config::ALIGN_1G)
+            }
+
+            pub fn align_up(&self, alignment: usize) -> Self {
                 let align = !(alignment - 1);
-                self.0 & align
+                Self(self.0 & align)
             }
 
-            pub fn align_to_4K_down(&self) -> usize {
-                (self.0 + config::MASK_4K) & config::ALIGN_4K
+            pub fn align_to_4K_down(&self) -> Self {
+                Self((self.0 + config::MASK_4K) & config::ALIGN_4K)
             }
-            pub fn align_to_16K_down(&self) -> usize {
-                (self.0 + config::MASK_16K) & config::ALIGN_16K
+            pub fn align_to_16K_down(&self) -> Self {
+                Self((self.0 + config::MASK_16K) & config::ALIGN_16K)
             }
-            pub fn align_to_64K_down(&self) -> usize {
-                (self.0 + config::MASK_64K) & config::ALIGN_64K
+            pub fn align_to_64K_down(&self) -> Self {
+                Self((self.0 + config::MASK_64K) & config::ALIGN_64K)
             }
-            pub fn align_to_2M_down(&self) -> usize {
-                (self.0 + config::MASK_2M) & config::ALIGN_2M
+            pub fn align_to_2M_down(&self) -> Self {
+                Self((self.0 + config::MASK_2M) & config::ALIGN_2M)
             }
-            pub fn align_to_1G_down(&self) -> usize {
-                (self.0 + config::MASK_1G) & config::ALIGN_1G
+            pub fn align_to_1G_down(&self) -> Self {
+                Self((self.0 + config::MASK_1G) & config::ALIGN_1G)
             }
-            pub fn align_down(&self, alignment: usize) -> usize {
+            pub fn align_down(&self, alignment: usize) -> Self {
                 let align = !(alignment - 1);
-                (self.0 + alignment - 1) & align
+                Self((self.0 + alignment - 1) & align)
             }
         }
     };
@@ -267,12 +187,7 @@ impl fmt::Debug for VirtualAddress {
 }
 impl fmt::Debug for PhysicalAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "PA = {:#018x}, frame = {}",
-            self.0,
-            AddressEdit::shift_4K(self.0)
-        )
+        write!(f, "PA = {:#018x}, frame = {}", self.0, self.to_frame(),)
     }
 }
 impl fmt::Debug for PageNumber {
@@ -330,6 +245,7 @@ impl TryFrom<usize> for VirtualAddress {
         }
     }
 }
+
 impl TryFrom<usize> for PhysicalAddress {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
@@ -340,6 +256,7 @@ impl TryFrom<usize> for PhysicalAddress {
         }
     }
 }
+
 impl TryFrom<usize> for PageNumber {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
@@ -350,6 +267,7 @@ impl TryFrom<usize> for PageNumber {
         }
     }
 }
+
 impl TryFrom<usize> for FrameNumber {
     type Error = ErrorCode;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
@@ -457,9 +375,7 @@ impl VirtualAddress {
     fn _iter_to(start: Self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
 
-        if !AddressEdit::is_aligned_to(start.0, step)
-            || !AddressEdit::is_aligned_to(end_addr.0, step)
-        {
+        if !start.is_aligned_to(step) || !end_addr.is_aligned_to(step) {
             None
         } else {
             Some(AddressIterator::new(
@@ -472,9 +388,7 @@ impl VirtualAddress {
 
     fn _iter_for(start: Self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
         let end_addr = start + VirtualAddress::try_from(step.checked_mul(n).unwrap()).unwrap();
-        if !AddressEdit::is_aligned_to(start.0, step)
-            || !AddressEdit::is_aligned_to(end_addr.0, step)
-        {
+        if !start.is_aligned_to(step) || !end_addr.is_aligned_to(step) {
             None
         } else {
             Some(AddressIterator::new(
@@ -489,94 +403,66 @@ impl VirtualAddress {
     pub fn iter_4K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
         Self::_iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_4K_up(self.0)).unwrap(),
+            self.align_to_4K_up(),
             1 << config::SHIFT_4K,
-            VirtualAddress::try_from(AddressEdit::align_to_4K_down(end_addr.0)).unwrap(),
+            end_addr.align_to_4K_down(),
         )
     }
     pub fn iter_16K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
         Self::_iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_16K_up(self.0)).unwrap(),
+            self.align_to_16K_up(),
             1 << config::SHIFT_16K,
-            VirtualAddress::try_from(AddressEdit::align_to_16K_down(end_addr.0)).unwrap(),
+            end_addr.align_to_16K_down(),
         )
     }
     pub fn iter_64K_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
         Self::_iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_64K_up(self.0)).unwrap(),
+            self.align_to_64K_up(),
             1 << config::SHIFT_64K,
-            VirtualAddress::try_from(AddressEdit::align_to_64K_down(end_addr.0)).unwrap(),
+            end_addr.align_to_64K_down(),
         )
     }
     pub fn iter_2M_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
         Self::_iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_2M_up(self.0)).unwrap(),
+            self.align_to_2M_up(),
             1 << config::SHIFT_2M,
-            VirtualAddress::try_from(AddressEdit::align_to_2M_down(end_addr.0)).unwrap(),
+            end_addr.align_to_2M_down(),
         )
     }
     pub fn iter_1G_to(&self, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
         Self::_iter_to(
-            VirtualAddress::try_from(AddressEdit::align_to_1G_up(self.0)).unwrap(),
+            self.align_to_1G_up(),
             1 << config::SHIFT_1G,
-            VirtualAddress::try_from(AddressEdit::align_to_1G_down(end_addr.0)).unwrap(),
+            end_addr.align_to_1G_down(),
         )
     }
 
     pub fn iter_to(&self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
-        Self::_iter_to(
-            VirtualAddress::try_from(AddressEdit::align_up(self.0, step)).unwrap(),
-            step,
-            VirtualAddress::try_from(AddressEdit::align_down(end_addr.0, step)).unwrap(),
-        )
+        Self::_iter_to(self.align_up(step), step, end_addr.align_down(step))
     }
 
     pub fn iter_4K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::_iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_4K_up(self.0)).unwrap(),
-            1 << config::SHIFT_4K,
-            n,
-        )
+        Self::_iter_for(self.align_to_4K_up(), 1 << config::SHIFT_4K, n)
     }
     pub fn iter_16K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::_iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_16K_up(self.0)).unwrap(),
-            1 << config::SHIFT_16K,
-            n,
-        )
+        Self::_iter_for(self.align_to_16K_up(), 1 << config::SHIFT_16K, n)
     }
     pub fn iter_64K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::_iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_64K_up(self.0)).unwrap(),
-            1 << config::SHIFT_64K,
-            n,
-        )
+        Self::_iter_for(self.align_to_64K_up(), 1 << config::SHIFT_64K, n)
     }
     pub fn iter_2M_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::_iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_2M_up(self.0)).unwrap(),
-            1 << config::SHIFT_2M,
-            n,
-        )
+        Self::_iter_for(self.align_to_2M_up(), 1 << config::SHIFT_2M, n)
     }
     pub fn iter_1G_for(&self, n: usize) -> Option<AddressIterator<Self>> {
-        Self::_iter_for(
-            VirtualAddress::try_from(AddressEdit::align_to_1G_up(self.0)).unwrap(),
-            1 << config::SHIFT_1G,
-            n,
-        )
+        Self::_iter_for(self.align_to_1G_up(), 1 << config::SHIFT_1G, n)
     }
     pub fn iter_for(&self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
-        Self::_iter_for(
-            VirtualAddress::try_from(AddressEdit::align_up(self.0, step)).unwrap(),
-            step,
-            n,
-        )
+        Self::_iter_for(self.align_up(step), step, n)
     }
 }
 

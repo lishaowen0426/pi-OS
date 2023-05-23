@@ -65,7 +65,6 @@ unsafe fn kernel_main() -> ! {
 
     memory::init().unwrap();
     console::init().unwrap();
-    println!("Working!");
 
     println!(
         "Exclusive reservation granule = {}",

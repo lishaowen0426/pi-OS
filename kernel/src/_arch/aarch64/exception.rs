@@ -184,8 +184,14 @@ impl fmt::Display for ExceptionContext {
         write!(f, "{}", self.esr_el1)
     }
 }
-fn default_exception_handler(exc: &ExceptionContext) {
-    panic!("CPU Exception {}", exc);
+fn default_synchronous_exception_handler(exc: &ExceptionContext) {
+    panic!("CPU Synchronous exception {}", exc);
+}
+fn default_irq_exception_handler(exc: &ExceptionContext) {
+    panic!("CPU Interrupt Request {}", exc);
+}
+fn default_serro_exception_handler(exc: &ExceptionContext) {
+    panic!("CPU SErrir {}", exc);
 }
 
 // Current, SP_EL0
@@ -208,48 +214,48 @@ extern "C" fn current_el0_serror(_e: &mut ExceptionContext) {
 // Current, SP_ELx
 #[no_mangle]
 extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_synchronous_exception_handler(e);
 }
 
 #[no_mangle]
 extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_irq_exception_handler(e);
 }
 
 #[no_mangle]
 extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_serro_exception_handler(e);
 }
 
 // Lower, AArch64
 #[no_mangle]
 extern "C" fn lower_aarch64_synchronous(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_synchronous_exception_handler(e);
 }
 
 #[no_mangle]
 extern "C" fn lower_aarch64_irq(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_irq_exception_handler(e);
 }
 
 #[no_mangle]
 extern "C" fn lower_aarch64_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_serro_exception_handler(e);
 }
 // Lower, AArch32
 #[no_mangle]
 extern "C" fn lower_aarch32_synchronous(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_synchronous_exception_handler(e);
 }
 
 #[no_mangle]
 extern "C" fn lower_aarch32_irq(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_irq_exception_handler(e);
 }
 
 #[no_mangle]
 extern "C" fn lower_aarch32_serror(e: &mut ExceptionContext) {
-    default_exception_handler(e);
+    default_serro_exception_handler(e);
 }
 
 pub fn init() -> Result<(), ErrorCode> {
