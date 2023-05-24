@@ -25,7 +25,7 @@ impl FrameAllocator for LinearFrameAllocator {
         }
     }
 
-    fn frame_free(&mut self, frame: FrameNumber) -> Result<(), ErrorCode> {
+    fn frame_free(&mut self, _frame: FrameNumber) -> Result<(), ErrorCode> {
         Err(EINVAL)
     }
 

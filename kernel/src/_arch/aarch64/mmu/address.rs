@@ -57,6 +57,19 @@ macro_rules! impl_address {
             pub fn value(&self) -> usize {
                 self.0
             }
+            pub fn offset(&self) -> usize {
+                (self.0 >> config::OFFSET_SHIFT) & config::OFFSET_MASK
+            }
+            pub fn set_offset<T>(&self, offset: T) -> Self
+            where
+                T: TryInto<usize>,
+                <T as TryInto<usize>>::Error: fmt::Debug,
+            {
+                Self(
+                    self.0
+                        .set_bits(config::OFFSET_RANGE, offset.try_into().unwrap()),
+                )
+            }
 
             pub fn as_const_ptr<T>(&self) -> *const T {
                 self.0 as *const T
@@ -333,9 +346,6 @@ impl VirtualAddress {
     pub fn level3(&self) -> usize {
         (self.0 >> config::L3_INDEX_SHIFT) & config::INDEX_MASK
     }
-    pub fn offset(&self) -> usize {
-        (self.0 >> config::OFFSET_SHIFT) & config::OFFSET_MASK
-    }
 
     pub fn set_level1<T>(&mut self, idx: T) -> &mut Self
     where
@@ -359,16 +369,6 @@ impl VirtualAddress {
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
         self.0 = self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
-        self
-    }
-    pub fn set_offset<T>(&mut self, idx: T) -> &mut Self
-    where
-        T: TryInto<usize>,
-        <T as TryInto<usize>>::Error: fmt::Debug,
-    {
-        self.0 = self
-            .0
-            .set_bits(config::OFFSET_RANGE, idx.try_into().unwrap());
         self
     }
 
@@ -491,9 +491,8 @@ mod tests {
                 0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
             )
             .unwrap();
-            va0.set_offset(0b010101000011);
             assert_eq!(
-                va0,
+                va0.set_offset(0b010101000011),
                 VirtualAddress::try_from(
                     0b0000000000000000_000100100_011010001_010110011_110001001_010101000011usize
                 )

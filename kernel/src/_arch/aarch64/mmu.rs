@@ -24,6 +24,8 @@ use cache::*;
 pub use mmu_config::config;
 use translation_entry::*;
 use translation_table::*;
+pub use address::*;
+use frame_allocator::*;
 
 
 fn config_registers_el1() -> Result<(), ErrorCode> {
@@ -121,10 +123,20 @@ impl MemoryManagementUnit {
         }
     }
 
-    pub fn map() {
-        todo!()
-    }
 
+
+    pub fn map(
+        &self,
+        va: VirtualAddress,
+        pa: PhysicalAddress,
+        mt: &MemoryType,
+        frame_allocator: &mut dyn FrameAllocator,
+    ) -> Result<(), ErrorCode> {
+        self.l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+    }
+    pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
+        self.l1.lock().translate(va)
+    }
 
 }
 
@@ -137,6 +149,7 @@ mod tests {
     use test_macros::kernel_test;
     #[kernel_test]
     fn test_mmu() {
+        super::init().unwrap();
 
     }
 }

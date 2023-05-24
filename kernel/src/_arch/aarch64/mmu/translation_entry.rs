@@ -651,6 +651,7 @@ impl Descriptor {
             | (0b01 << Self::APTable.start)
             | (0b0 << Self::UXNTable)
             | (0b0 << Self::PXNTable)
+            | (0b1 << Self::AF) // Accessed
     }
     pub fn set_table_attributes(&mut self) -> Result<(), ErrorCode> {
         match *self {

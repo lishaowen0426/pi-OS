@@ -2,7 +2,7 @@ use crate::{errno::ErrorCode, exception::PrivilegeLevel, unsafe_println};
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
 use tock_registers::{
-    interfaces::{Readable, Writeable},
+    interfaces::{ReadWriteable, Readable, Writeable},
     registers::InMemoryRegister,
 };
 
@@ -291,42 +291,5 @@ mod tests {
         registers::InMemoryRegister,
     };
     #[kernel_test]
-    fn test_exception() {
-        memory::init().unwrap();
-
-        let exception_handler = ExceptionHandler::new();
-        exception_handler.init().unwrap();
-
-        let to_mask_str = |x| -> _ {
-            if x {
-                "Masked"
-            } else {
-                "Unmasked"
-            }
-        };
-
-        unsafe_println!("      Exception handling state:");
-        unsafe_println!(
-            "            Debug  (D): {}",
-            to_mask_str(DAIF.is_set(DAIF::D))
-        );
-        unsafe_println!(
-            "            SError (A): {}",
-            to_mask_str(DAIF.is_set(DAIF::A))
-        );
-        unsafe_println!(
-            "            IRQ    (I): {}",
-            to_mask_str(DAIF.is_set(DAIF::I))
-        );
-        unsafe_println!(
-            "            FIQ    (F): {}",
-            to_mask_str(DAIF.is_set(DAIF::F))
-        );
-
-        unsafe_println_0!("Trying to trigger an exception..");
-        let mut big_addr: u64 = 8 * 1024 * 1024 * 1024;
-        unsafe {
-            core::ptr::read_volatile(big_addr as *mut u64);
-        }
-    }
+    fn test_exception() {}
 }

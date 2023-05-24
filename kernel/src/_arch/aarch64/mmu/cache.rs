@@ -380,6 +380,5 @@ mod tests {
     #[kernel_test]
     fn test_a64cache_tlb() {
         let a64_caches = A64CacheSet::new().unwrap();
-        unsafe_println!("{}", a64_caches);
     }
 }

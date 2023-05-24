@@ -49,11 +49,11 @@ _start:
 
     ADR_LOAD    x0, l1_page_table
     add         x1, x0, #4096
+
 .L_prepare_l1_page_table:
     stp         xzr, xzr, [x0], #16
     cmp         x0, x1
     b.ne        .L_prepare_l1_page_table
-
 
     bl init_mini_uart
     b _start_rust
@@ -89,6 +89,10 @@ clear_frame:
 .p2align 12 
 .global l1_page_table
 l1_page_table:
+    .space 4096, 0
+l2_page_table:
+    .space 4096, 0
+l3_page_table:
     .space 4096, 0
 
 

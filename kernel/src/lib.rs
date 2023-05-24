@@ -41,8 +41,19 @@ mod panic_wait;
 mod print;
 mod synchronization;
 mod utils;
+extern "C" {
+    static __boot_core_stack_end_exclusive: u8;
+    static __code_start: u8;
+    static __code_end_exclusive: u8;
+    static __bss_start: u8;
+    static __bss_end_exclusive: u8;
+    static __data_start: u8;
+    static __data_end_exclusive: u8;
+    static __l1_page_table_start: u8;
+}
 
 use cpu::registers::*;
+use memory::*;
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 #[cfg(not(test))]
@@ -65,6 +76,14 @@ unsafe fn kernel_main() -> ! {
 
     memory::init().unwrap();
     console::init().unwrap();
+    {
+        let va_start = VirtualAddress::try_from(0x0usize).unwrap();
+        let va_end = VirtualAddress::try_from(&__bss_end_exclusive as *const _ as usize).unwrap();
+        va_start.iter_4K_to(va_end).unwrap().for_each(|va| {
+            print!("va: {} => ", va);
+            println!("pa: {}", memory::MMU.get().unwrap().translate(va).unwrap());
+        });
+    }
 
     println!(
         "Exclusive reservation granule = {}",
