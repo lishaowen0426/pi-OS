@@ -1,5 +1,5 @@
 use super::{address::*, cache::*, config, frame_allocator::*, translation_entry::*, BlockSize};
-use crate::{bsp::mmio, errno::*, println, unsafe_println};
+use crate::{bsp::mmio, errno::*, println, unsafe_print, unsafe_println};
 use aarch64_cpu::{
     asm::barrier,
     registers::{TTBR0_EL1, TTBR1_EL1},
@@ -16,6 +16,7 @@ extern "C" {
     static __data_start: u8;
     static __data_end_exclusive: u8;
     static __l1_page_table_start: u8;
+    static __page_table_end_exclusive: u8;
 }
 #[repr(transparent)]
 pub struct UnsafeTranslationTable<L> {
@@ -60,7 +61,6 @@ impl<L: TranslationTableLevel> UnsafeTranslationTable<L> {
 
 impl UnsafeTranslationTable<Level1> {
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
-        println!("before");
         let l1_entry = self[va.level1()].get();
         println!("l2_table_address : {:#066b}", Self::l2_table_address(va));
         println!("l1_entry {}", l1_entry);
@@ -70,9 +70,7 @@ impl UnsafeTranslationTable<Level1> {
                 let l2_table = UnsafeTranslationTable::<Level2>::new(
                     Self::l2_table_address(va) as *mut L2Entry
                 );
-                println!("before");
                 let l2_entry = l2_table[va.level2()].get();
-                println!("after");
                 match l2_entry {
                     Descriptor::TableEntry(_) => {
                         let l3_table = UnsafeTranslationTable::<Level3>::new(
@@ -267,14 +265,14 @@ impl UnsafeTranslationTable<Level1> {
 fn get_ttbr0() -> usize {
     TTBR0_EL1.get_baddr() as usize
 }
-fn set_ttbr0(pa: PhysicalAddress, asid: u8) {
+pub fn set_ttbr0(pa: PhysicalAddress, asid: u8) {
     unsafe_println!("Set up TTBR0_EL1 with pa {}, ASID = {}", pa, asid);
     TTBR0_EL1.modify(TTBR0_EL1::ASID.val(asid as u64));
     TTBR0_EL1.set_baddr(pa.value() as u64);
     barrier::isb(barrier::SY);
     A64TLB::invalidate_all();
 }
-fn set_ttbr1(pa: PhysicalAddress, asid: u8) {
+pub fn set_ttbr1(pa: PhysicalAddress, asid: u8) {
     unsafe_println!("Set up TTBR1_EL1 with pa {}, ASID = {}", pa, asid);
     TTBR1_EL1.modify(TTBR1_EL1::ASID.val(asid as u64));
     TTBR1_EL1.set_baddr(pa.value() as u64);
@@ -302,36 +300,36 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
         bss_start_addr = &__bss_start as *const _ as usize;
         bss_end_addr = &__bss_end_exclusive as *const _ as usize;
         l1_page_table_start_addr = &__l1_page_table_start as *const _ as usize;
-        l1_page_table_end_addr = l1_page_table_start_addr + config::PAGE_SIZE;
+        l1_page_table_end_addr = &__page_table_end_exclusive as *const _ as usize;
     }
 
     let l1_table = UnsafeTranslationTable::<Level1>::new(l1_page_table_start_addr as *mut L1Entry);
 
     // 1. recursive L1
     {
-        let mut recursive_table_entry = l1_table[config::RECURSIVE_L1_INDEX]
-            .get()
-            .set_table()
-            .unwrap();
-        recursive_table_entry.set_table_attributes()?;
-
-        unsafe {
-            let mut recursive_page_entry = recursive_table_entry.table_to_page().unwrap();
-
-            recursive_page_entry.set_RW_normal().unwrap();
-
-            recursive_page_entry
-                .set_address(PhysicalAddress::try_from(l1_page_table_start_addr).unwrap())
-                .unwrap();
-            l1_table.set_entry(
-                config::RECURSIVE_L1_INDEX,
-                TranslationTableEntry::from(recursive_page_entry),
-            )?;
-        }
-        unsafe_println!(
-            "L1 table is recursively mapped to VA = {:#018x}",
-            config::L1_VIRTUAL_ADDRESS
-        );
+        // let mut recursive_table_entry = l1_table[config::RECURSIVE_L1_INDEX]
+        // .get()
+        // .set_table()
+        // .unwrap();
+        // recursive_table_entry.set_table_attributes()?;
+        //
+        // unsafe {
+        // let mut recursive_page_entry = recursive_table_entry.table_to_page().unwrap();
+        //
+        // recursive_page_entry.set_RW_normal().unwrap();
+        //
+        // recursive_page_entry
+        // .set_address(PhysicalAddress::try_from(l1_page_table_start_addr).unwrap())
+        // .unwrap();
+        // l1_table.set_entry(
+        // config::RECURSIVE_L1_INDEX,
+        // TranslationTableEntry::from(recursive_page_entry),
+        // )?;
+        // }
+        // unsafe_println!(
+        // "L1 table is recursively mapped to VA = {:#018x}",
+        // config::L1_VIRTUAL_ADDRESS
+        // );
     }
 
     // 2. Identity map before where MMIO starts using 4kb blocks
@@ -461,23 +459,69 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
 
             Ok(())
         };
+
+        let table_translate = |va: VirtualAddress| {
+            let l1_entry = l1_table[va.level1()].get();
+            unsafe_print!("va = {:?}, l1 = {}", va, l1_entry);
+            match l1_entry {
+                Descriptor::TableEntry(e) => {
+                    let l2_table = UnsafeTranslationTable::<Level2>::new(
+                        l1_entry.get_address().unwrap().value() as *mut L2Entry,
+                    );
+                    let l2_entry = l2_table[va.level2()].get();
+                    unsafe_print!(", l2= {}", l2_entry);
+                    match l2_entry {
+                        Descriptor::TableEntry(e) => {
+                            let l3_table = UnsafeTranslationTable::<Level3>::new(
+                                l2_entry.get_address().unwrap().value() as *mut L3Entry,
+                            );
+                            let l3_entry = l3_table[va.level3()].get();
+                            unsafe_print!(", l3= {}", l3_entry);
+                            match l3_entry {
+                                Descriptor::PageEntry(_) => {
+                                    let pa = l3_entry.get_address().unwrap();
+                                    unsafe_println!(", pa= {}", pa);
+                                    Some(pa.set_offset(va.offset()))
+                                }
+                                _ => None,
+                            }
+                        }
+                        Descriptor::L2BlockEntry(_) => {
+                            let pa = l2_entry.get_address().unwrap();
+                            Some(pa.set_offset(va.offset()))
+                        }
+                        _ => None,
+                    }
+                }
+                Descriptor::L1BlockEntry(_) => {
+                    let pa = l1_entry.get_address().unwrap();
+                    Some(pa.set_offset(va.offset()))
+                }
+                _ => None,
+            }
+        };
+
         let va_start = VirtualAddress::try_from(0usize).unwrap();
         // table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
         unsafe_println!("boot stack pages: {:?} -> {:?}", va_start, boot_stack_end);
         va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
-            table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            table_translate(va);
         });
         unsafe_println!("code pages: {:?} -> {:?}", code_start, code_end);
         code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
-            table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
+            // table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
+            table_translate(va);
         });
         unsafe_println!("rodata pages: {:?} -> {:?}", data_start, data_end);
         data_start.iter_4K_to(data_end).unwrap().for_each(|va| {
-            table_walk_and_identity_map_4K(va, RONORMAL, &mut linear_allocator).unwrap();
+            // table_walk_and_identity_map_4K(va, RONORMAL, &mut linear_allocator).unwrap();
+            table_translate(va);
         });
         unsafe_println!("bss pages: {:?} -> {:?}", bss_start, bss_end);
         bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
-            table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+            table_translate(va);
         });
         unsafe_println!("mmio pages: {:?} -> {:?}", peripheral_start, memory_end);
         peripheral_start
@@ -485,6 +529,7 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
             .unwrap()
             .for_each(|va| {
                 table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
+                table_translate(va);
             });
         unsafe_println!("The next free frame = {:?}", linear_allocator.peek());
         let l1_pa = PhysicalAddress::try_from(l1_page_table_start_addr).unwrap();

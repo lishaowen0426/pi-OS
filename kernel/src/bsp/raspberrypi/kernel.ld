@@ -11,6 +11,7 @@ __rpi_phys_binary_load_addr = 0x80000;
 
 PAGE_SIZE = 4K;
 PAGE_MASK = PAGE_SIZE - 1;
+KERNEL_OFFSET = 0;
 
 
 
@@ -33,7 +34,8 @@ PHDRS
 
 SECTIONS
 {
-    . = __rpi_phys_dram_start_addr;
+    . = KERNEL_OFFSET;
+    __kernel_offset = .;
     /***********************************************************************************************
     * Boot Core Stack
     ***********************************************************************************************/
@@ -90,6 +92,8 @@ SECTIONS
     {
         __l1_page_table_start = .;
         *(page_table);
+        . = ALIGN(PAGE_SIZE);
+        __page_table_end_exclusive = .;
     }: segment_table
 
 

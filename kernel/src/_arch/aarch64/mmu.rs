@@ -7,26 +7,36 @@ use spin::{mutex::SpinMutex, once::Once};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[path = "mmu/address.rs"]
-mod address;
+pub mod address;
 #[path = "mmu/cache.rs"]
 mod cache;
 #[path = "mmu/config.rs"]
 pub mod mmu_config;
 #[path = "mmu/translation_entry.rs"]
-mod translation_entry;
+pub mod translation_entry;
 #[path = "mmu/translation_table.rs"]
-mod translation_table;
+pub mod translation_table;
 
 #[path = "mmu/frame_allocator.rs"]
 mod frame_allocator;
 
 use cache::*;
 pub use mmu_config::config;
-use translation_entry::*;
-use translation_table::*;
+pub use translation_entry::*;
+pub use translation_table::*;
 pub use address::*;
 use frame_allocator::*;
 
+extern "C" {
+    static __boot_core_stack_end_exclusive: u8;
+    static __code_start: u8;
+    static __code_end_exclusive: u8;
+    static __bss_start: u8;
+    static __bss_end_exclusive: u8;
+    static __data_start: u8;
+    static __data_end_exclusive: u8;
+    static __l1_page_table_start: u8;
+}
 
 fn config_registers_el1() -> Result<(), ErrorCode> {
         // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
@@ -81,6 +91,12 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
 pub fn init() -> Result<(), ErrorCode> {
     config_registers_el1()?;
     translation_table::set_up_init_mapping()?;
+    /*
+    unsafe{
+        let l1_pa = PhysicalAddress::try_from(&__l1_page_table_start as * const _ as usize).unwrap();
+        set_ttbr0(l1_pa, 0);
+    }
+        */
 
     // Enable the MMU and turn on data and instruction caching.
 
@@ -95,11 +111,13 @@ pub fn init() -> Result<(), ErrorCode> {
     barrier::isb(barrier::SY);
 
 
+    
     MMU.call_once(|| {
         MemoryManagementUnit::new(UnsafeTranslationTable::new(
             config::L1_VIRTUAL_ADDRESS as *mut L1Entry,
         ))
     });
+    
 
     Ok(())
 }
@@ -149,7 +167,7 @@ mod tests {
     use test_macros::kernel_test;
     #[kernel_test]
     fn test_mmu() {
-        super::init().unwrap();
+         super::init().unwrap();
 
     }
 }

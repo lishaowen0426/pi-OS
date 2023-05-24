@@ -1,5 +1,5 @@
 use super::{address::*, config};
-use crate::{errno::*, utils::bitfields::Bitfields};
+use crate::{errno::*, unsafe_println, utils::bitfields::Bitfields};
 use core::{fmt, marker::PhantomData, ops::Range};
 
 #[derive(Default)]
@@ -140,7 +140,7 @@ impl Descriptor {
 
     pub const BLOCK_PAGE_ATTR_MASK: u64 =
         (0b111u64 << Self::Contiguous) | (0b1111111111u64 << Self::AttrIndx.start);
-    pub const TABLE_ATTR_MASK: u64 = 0b11111u64 << Self::PXNTable;
+    pub const TABLE_ATTR_MASK: u64 = (0b11111u64 << Self::PXNTable) | (0b1 << Self::AF);
 
     pub fn get_attributes(&self) -> &MemoryType {
         match *self {
@@ -799,7 +799,15 @@ mod tests {
 
     #[kernel_test]
     fn test_translation_table_entry() {
-        {}
+        {
+            println!("RWNORMAL = {:#066b}", Descriptor::RW_NORMAL);
+            println!("RONORMAL = {:#066b}", Descriptor::RO_NORMAL);
+            println!("XNORMAL = {:#066b}", Descriptor::X_NORMAL);
+            println!("RWXNORMAL = {:#066b}", Descriptor::RWX_NORMAL);
+            println!("RWDEVICE = {:#066b}", Descriptor::RW_DEVICE);
+            println!("RODEVICE = {:#066b}", Descriptor::RO_DEVICE);
+            println!("Table_attr = {:#066b}", Descriptor::TABLE_ATTR);
+        }
         // Level 1 block
         {
             let e: TranslationTableEntry<Level1> = Default::default();
