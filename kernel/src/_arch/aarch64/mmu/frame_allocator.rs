@@ -2,7 +2,7 @@ use super::address::*;
 use crate::errno::*;
 
 extern "C" {
-    fn clear_frame(frame: usize);
+    fn clear_memory_range(start: usize, end_exclusive: usize);
 }
 
 pub trait FrameAllocator {
@@ -17,7 +17,8 @@ impl FrameAllocator for LinearFrameAllocator {
     fn frame_alloc(&mut self) -> Option<FrameNumber> {
         if let Some(ref mut f) = self.0 {
             unsafe {
-                clear_frame(f.to_address().value());
+                let start = f.to_address().value();
+                clear_memory_range(start, start + 4096);
             }
             f.next()
         } else {

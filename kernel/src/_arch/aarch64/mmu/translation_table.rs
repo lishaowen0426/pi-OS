@@ -8,15 +8,14 @@ use core::ops::Index;
 use tock_registers::interfaces::ReadWriteable;
 
 extern "C" {
-    static __boot_core_stack_end_exclusive: u8;
     static __code_start: u8;
     static __code_end_exclusive: u8;
     static __bss_start: u8;
     static __bss_end_exclusive: u8;
     static __data_start: u8;
     static __data_end_exclusive: u8;
-    static __l1_page_table_start: u8;
     static __page_table_end_exclusive: u8;
+    static l1_lower_page_table: u8;
 }
 #[repr(transparent)]
 pub struct UnsafeTranslationTable<L> {
@@ -282,7 +281,6 @@ pub fn set_ttbr1(pa: PhysicalAddress, asid: u8) {
 
 #[allow(unused_variables)]
 pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
-    let boot_core_stack_end_exclusive_addr: usize;
     let code_start_addr: usize;
     let code_end_addr: usize;
     let data_start_addr: usize;
@@ -292,14 +290,13 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
     let l1_page_table_start_addr: usize;
     let l1_page_table_end_addr: usize;
     unsafe {
-        boot_core_stack_end_exclusive_addr = &__boot_core_stack_end_exclusive as *const _ as usize;
         code_start_addr = &__code_start as *const _ as usize;
         code_end_addr = &__code_end_exclusive as *const _ as usize;
         data_start_addr = &__data_start as *const _ as usize;
         data_end_addr = &__data_end_exclusive as *const _ as usize;
         bss_start_addr = &__bss_start as *const _ as usize;
         bss_end_addr = &__bss_end_exclusive as *const _ as usize;
-        l1_page_table_start_addr = &__l1_page_table_start as *const _ as usize;
+        l1_page_table_start_addr = &l1_lower_page_table as *const _ as usize;
         l1_page_table_end_addr = &__page_table_end_exclusive as *const _ as usize;
     }
 
@@ -336,7 +333,6 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
     // On pi3, L1[MMIO_START] = 0
     // On pi4, L1[MMIO_START] = 3
     {
-        let boot_stack_end = VirtualAddress::try_from(boot_core_stack_end_exclusive_addr).unwrap();
         let code_start = VirtualAddress::try_from(code_start_addr).unwrap();
         let code_end = VirtualAddress::try_from(code_end_addr).unwrap();
         let data_start = VirtualAddress::try_from(data_start_addr).unwrap();
@@ -426,6 +422,7 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
             let mapped_to = PhysicalAddress::try_from(va.value()).unwrap();
 
             let mut l1_entry = l1_table[va.level1()].get();
+            unsafe_println!("l1 entry = {}", l1_entry);
             let l2_table = match l1_entry {
                 Descriptor::INVALID => {
                     l1_entry = l1_entry.set_table()?;
@@ -447,6 +444,7 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
             .ok_or(ETYPE)?;
 
             let mut l2_entry = l2_table[va.level2()].get();
+            unsafe_println!("l2 entry = {}", l2_entry);
             match l2_entry {
                 Descriptor::INVALID => {
                     l2_entry = l2_entry.set_l2_block()?;
@@ -503,11 +501,11 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
 
         let va_start = VirtualAddress::try_from(0usize).unwrap();
         // table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
-        unsafe_println!("boot stack pages: {:?} -> {:?}", va_start, boot_stack_end);
-        va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
-            // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
-            // table_translate(va);
-        });
+        // unsafe_println!("boot stack pages: {:?} -> {:?}", va_start, boot_stack_end);
+        // va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
+        // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
+        // table_translate(va);
+        // });
         unsafe_println!("code pages: {:?} -> {:?}", code_start, code_end);
         code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
@@ -528,7 +526,7 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
             .iter_2M_to(memory_end)
             .unwrap()
             .for_each(|va| {
-                table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
+                // table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
                 // table_translate(va);
             });
         unsafe_println!("The next free frame = {:?}", linear_allocator.peek());

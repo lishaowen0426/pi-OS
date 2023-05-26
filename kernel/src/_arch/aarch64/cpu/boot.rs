@@ -20,14 +20,14 @@ use tock_registers::interfaces::{ReadWriteable,Writeable, Readable};
 use crate::memory::*;
 
 extern "C" {
-    static __boot_core_stack_end_exclusive: u8;
     static __code_start: u8;
     static __code_end_exclusive: u8;
     static __bss_start: u8;
     static __bss_end_exclusive: u8;
     static __data_start: u8;
     static __data_end_exclusive: u8;
-    static __l1_page_table_start: u8;
+    static l1_lower_page_table: u8;
+    static initial_stack_top: u8;
 }
 
 fn config_registers_el1()  {
@@ -69,7 +69,7 @@ fn config_registers_el1()  {
 
     TTBR0_EL1.modify(TTBR0_EL1::ASID.val(0 as u64));
     unsafe{
-    TTBR0_EL1.set_baddr(&__l1_page_table_start as * const _ as u64);
+    TTBR0_EL1.set_baddr(&l1_lower_page_table as * const _ as u64);
     }
     barrier::isb(barrier::SY);
 
@@ -101,14 +101,18 @@ unsafe fn prepare_el2_to_el1() {
     );
 
     ELR_EL2.set(crate::kernel_main as *const () as u64);
-    SP_EL1.set(&__boot_core_stack_end_exclusive as *const u8 as u64);
+    SP_EL1.set(&initial_stack_top as *const u8 as u64);
+    unsafe_println!("HCR_EL2 = {:#066b}", HCR_EL2.get());
+    unsafe_println!("SPSR_EL2 = {:#066b}", SPSR_EL2.get());
+    unsafe_println!("CNTHCTL_EL2 = {:#066b}", CNTHCTL_EL2.get());
+    unsafe_println!("CNTVOFF_EL2 = {:#066b}", CNTVOFF_EL2.get());
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn _start_rust(x0:u64) -> ! {
 
     {
-        unsafe_println!("enter rust");
+        unsafe_println!("x0 = {:#066x}",x0);
 
     }
     

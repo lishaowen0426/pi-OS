@@ -41,9 +41,9 @@ pub mod config {
     pub const L1_RANGE: Range<usize> = 30..39;
 
     pub const OFFSET_SHIFT: usize = 0;
-    pub const L3_INDEX_SHIFT: usize = OFFSET_BITS;
-    pub const L2_INDEX_SHIFT: usize = OFFSET_BITS + INDEX_BITS;
-    pub const L1_INDEX_SHIFT: usize = OFFSET_BITS + 2 * INDEX_BITS;
+    pub const L3_INDEX_SHIFT: usize = 12;
+    pub const L2_INDEX_SHIFT: usize = L3_INDEX_SHIFT + INDEX_BITS;
+    pub const L1_INDEX_SHIFT: usize = L2_INDEX_SHIFT + INDEX_BITS;
 
     pub const RECURSIVE_L1_INDEX: usize = ENTRIES_PER_TABLE - 1;
     pub const L1_VIRTUAL_ADDRESS: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)

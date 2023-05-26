@@ -42,14 +42,12 @@ mod print;
 mod synchronization;
 mod utils;
 extern "C" {
-    static __boot_core_stack_end_exclusive: u8;
     static __code_start: u8;
     static __code_end_exclusive: u8;
     static __bss_start: u8;
     static __bss_end_exclusive: u8;
     static __data_start: u8;
     static __data_end_exclusive: u8;
-    static __l1_page_table_start: u8;
     static initial_stack_top: u8;
 }
 
@@ -59,9 +57,9 @@ use tock_registers::interfaces::{ReadWriteable, Readable};
 
 #[cfg(not(test))]
 #[no_mangle]
-unsafe fn kernel_main() -> ! {
+pub unsafe fn kernel_main() -> ! {
     use aarch64_cpu::registers::*;
-    unsafe_println!("SPSel = {}", SPSel.read(SPSel::SP));
+    unsafe_println!(" SPSel = {}", SPSel.read(SPSel::SP));
 
     let (_, el) = exception::current_privilege_level();
     unsafe_println!("Current privilege level: {}", el);
@@ -109,7 +107,7 @@ fn test_runner(tests: &[&test_types::UnitTest]) {
 
 #[cfg(test)]
 #[no_mangle]
-unsafe fn kernel_main() -> ! {
+pub unsafe fn kernel_main() -> ! {
     // exception::handling_init();
     // bsp::driver::qemu_bring_up_console();
 
