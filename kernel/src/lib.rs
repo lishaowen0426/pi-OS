@@ -50,6 +50,7 @@ extern "C" {
     static __data_start: u8;
     static __data_end_exclusive: u8;
     static __l1_page_table_start: u8;
+    static initial_stack_top: u8;
 }
 
 use cpu::registers::*;
@@ -65,6 +66,11 @@ unsafe fn kernel_main() -> ! {
     let (_, el) = exception::current_privilege_level();
     unsafe_println!("Current privilege level: {}", el);
 
+    unsafe_println!(
+        "initial stack top = {:#066x}",
+        &initial_stack_top as *const _ as usize
+    );
+
     exception::init().unwrap();
 
     if ID_AA64MMFR2_EL1.read(ID_AA64MMFR2_EL1::CnP) == 1 {
@@ -76,7 +82,6 @@ unsafe fn kernel_main() -> ! {
 
     memory::init().unwrap();
     console::init().unwrap();
-
 
     println!(
         "Exclusive reservation granule = {}",

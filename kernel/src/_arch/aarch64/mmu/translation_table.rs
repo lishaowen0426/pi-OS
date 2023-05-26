@@ -506,22 +506,22 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
         unsafe_println!("boot stack pages: {:?} -> {:?}", va_start, boot_stack_end);
         va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
-            table_translate(va);
+            // table_translate(va);
         });
         unsafe_println!("code pages: {:?} -> {:?}", code_start, code_end);
         code_start.iter_4K_to(code_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4K(va, XNORMAL, &mut linear_allocator).unwrap();
-            table_translate(va);
+            // table_translate(va);
         });
         unsafe_println!("rodata pages: {:?} -> {:?}", data_start, data_end);
         data_start.iter_4K_to(data_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4K(va, RONORMAL, &mut linear_allocator).unwrap();
-            table_translate(va);
+            // table_translate(va);
         });
         unsafe_println!("bss pages: {:?} -> {:?}", bss_start, bss_end);
         bss_start.iter_4K_to(bss_end).unwrap().for_each(|va| {
             // table_walk_and_identity_map_4K(va, RWNORMAL, &mut linear_allocator).unwrap();
-            table_translate(va);
+            // table_translate(va);
         });
         unsafe_println!("mmio pages: {:?} -> {:?}", peripheral_start, memory_end);
         peripheral_start
@@ -529,7 +529,7 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
             .unwrap()
             .for_each(|va| {
                 table_walk_and_identity_map_2M(va, RWDEVICE, &mut linear_allocator).unwrap();
-                table_translate(va);
+                // table_translate(va);
             });
         unsafe_println!("The next free frame = {:?}", linear_allocator.peek());
         let l1_pa = PhysicalAddress::try_from(l1_page_table_start_addr).unwrap();

@@ -216,6 +216,7 @@ clear_frame:
 
 .include "exception.s"
 
+
 .section page_table, "aw", @nobits
 .p2align 12 
 .global l1_page_table
@@ -228,3 +229,16 @@ l3_page_table:
 
 
 
+.section stack, "aw", @nobits
+.p2align 12 
+.global initial_stack_guard_page
+initial_stack_guard_page:
+    .space 4096, 0
+.global initial_stack_bottom
+initial_stack_bottom:
+    .space 4096 * .INITIAL_STACK_SIZE, 0
+.global initial_stack_top
+initial_stack_top:
+    .space 4096, 0
+.global initial_double_stack_top
+initial_double_stack_top:
