@@ -48,47 +48,42 @@ extern "C" {
     static __bss_end_exclusive: u8;
     static __data_start: u8;
     static __data_end_exclusive: u8;
+    static __kernel_main: u8;
     static initial_stack_top: u8;
 }
 
+use aarch64_cpu::registers::*;
 use cpu::registers::*;
 use memory::*;
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 #[cfg(not(test))]
 #[no_mangle]
-pub unsafe fn kernel_main() -> ! {
-    use aarch64_cpu::registers::*;
-    unsafe_println!(" SPSel = {}", SPSel.read(SPSel::SP));
-
-    let (_, el) = exception::current_privilege_level();
-    unsafe_println!("Current privilege level: {}", el);
-
-    unsafe_println!(
-        "initial stack top = {:#066x}",
-        &initial_stack_top as *const _ as usize
-    );
+pub unsafe fn kernel_main(x0: u64) -> ! {
+    unsafe_println!(" x0 = {:#018x}", x0);
 
     exception::init().unwrap();
-
-    if ID_AA64MMFR2_EL1.read(ID_AA64MMFR2_EL1::CnP) == 1 {
-        unsafe_println!("CnP is supported");
-        TTBR0_EL1.modify(TTBR0_EL1::CnP.val(1));
-    } else {
-        unsafe_println!("CnP is not supported");
-    }
-
     memory::init().unwrap();
     console::init().unwrap();
 
-    println!(
-        "Exclusive reservation granule = {}",
-        (1 << CTR_EL0.read(CTR_EL0::ERG)) * memory::config::WORD_SIZE
-    );
+    let (_, el) = exception::current_privilege_level();
+    println!("Current privilege level: {}", el);
+
     println!("Trying to trigger an exception..");
-    let big_addr: u64 = 8 * 1024 * 1024 * 1024;
+    let km_higher_addr = &__kernel_main as *const _ as usize;
+    println!("km_higher_addr = {:#018x}", km_higher_addr);
+
+    let km = unsafe { core::mem::transmute::<usize, fn() -> !>(km_higher_addr) };
+    // MMU.get()
+    // .unwrap()
+    // .translate(VirtualAddress::from(0xffff << 48))
+    // .unwrap();
     unsafe {
-        core::ptr::read_volatile(big_addr as *mut u64);
+        memory::MMU
+            .get()
+            .unwrap()
+            .translate(VirtualAddress::from(km_higher_addr))
+            .unwrap();
     }
 
     loop {}

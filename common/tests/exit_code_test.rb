@@ -10,7 +10,7 @@ require 'io/wait'
 
 # A test that only inspects the exit code of the QEMU binary.
 class ExitCodeTest < Test
-    MAX_WAIT_SECS = 10
+    MAX_WAIT_SECS = 3
 
     def initialize(qemu_cmd, test_name)
         super()

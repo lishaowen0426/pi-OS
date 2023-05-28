@@ -135,11 +135,31 @@ impl fmt::Display for EsrEL1 {
         )?;
 
         // Exception class.
-        let ec_translation = match self.exception_class() {
-            Some(ESR_EL1::EC::Value::DataAbortCurrentEL) => "Data Abort, current EL",
-            _ => "N/A",
+        write!(f, " - ")?;
+        match self.exception_class() {
+            Some(ESR_EL1::EC::Value::DataAbortCurrentEL) => writeln!(
+                f,
+                "{} = {:#018x}",
+                "Data Abort, current EL, abort address",
+                FAR_EL1.get()
+            )?,
+            Some(ESR_EL1::EC::Value::InstrAbortCurrentEL) => writeln!(
+                f,
+                "{} = {:#018x}",
+                "Instruction Abort, current EL, abort address",
+                FAR_EL1.get()
+            )?,
+            Some(ESR_EL1::EC::Value::InstrAbortLowerEL) => writeln!(
+                f,
+                "{} = {:#018x}",
+                "Instruction Abort, lower EL, abort address",
+                FAR_EL1.get()
+            )?,
+            Some(ESR_EL1::EC::Value::SVC64) => {
+                writeln!(f, "{}", "SVC instruction execution in AArch64 state")?
+            }
+            _ => writeln!(f, "N/A")?,
         };
-        writeln!(f, " - {}", ec_translation)?;
 
         // Raw print of instruction specific syndrome.
         write!(
@@ -178,6 +198,10 @@ impl fmt::Display for ExceptionContext {
         for (i, reg) in self.gpr.iter().enumerate() {
             write!(f, "      x{: <2}: {: >#018x}{}", i, reg, alternating(i))?;
         }
+
+        writeln!(f, "TTBR0_EL1 = {:#018x}", TTBR0_EL1.get_baddr())?;
+        writeln!(f, "TTBR1_EL1 = {:#018x}", TTBR1_EL1.get_baddr())?;
+        writeln!(f, "TCR_EL1 = {:#066b}", TCR_EL1.get())?;
         writeln!(f, "Link Reg = {:#018x}", self.lr)?;
         writeln!(f, "ELR_EL1  = {:#018x}", self.elr_el1)?;
         writeln!(f, "{}", self.spsr_el1)?;
@@ -259,23 +283,10 @@ extern "C" fn lower_aarch32_serror(e: &mut ExceptionContext) {
 }
 
 pub fn init() -> Result<(), ErrorCode> {
-    unsafe {
-        unsafe_println!(
-            "exception vector base address = {:x}",
-            &__exception_vector_start as *const _ as usize
-        );
-    }
-
-    unsafe {
-        VBAR_EL1.set(&__exception_vector_start as *const _ as u64);
-        #[cfg(feature = "build_qemu")]
-        {
-            DAIF.modify(
-                DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked,
-            );
-        }
-        barrier::isb(barrier::SY);
-    }
+    // we mask all Interrupts when switch to el1 from el2
+    // here we unmask them
+    DAIF.modify(DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked);
+    barrier::isb(barrier::SY);
 
     Ok(())
 }

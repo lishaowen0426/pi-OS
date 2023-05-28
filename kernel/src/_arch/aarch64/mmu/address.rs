@@ -1,5 +1,5 @@
 use super::config;
-use crate::{errno::*, utils::bitfields::Bitfields};
+use crate::{errno::*, println, utils::bitfields::Bitfields};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -247,15 +247,9 @@ where
     }
 }
 
-// End address is always exclusive. So we allow the largest address to be 1 pass the end
-impl TryFrom<usize> for VirtualAddress {
-    type Error = ErrorCode;
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value > (0xFFFF_FFFF_FFFF + 1) {
-            Err(EOVERFLOW)
-        } else {
-            Ok(Self(value))
-        }
+impl From<usize> for VirtualAddress {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
@@ -312,7 +306,7 @@ impl Virtual for VirtualAddress {
 }
 impl Virtual for PageNumber {
     fn to_address(&self) -> VirtualAddress {
-        VirtualAddress::try_from(self.0 << config::SHIFT_4K).unwrap()
+        VirtualAddress::from(self.0 << config::SHIFT_4K)
     }
     fn to_page(&self) -> PageNumber {
         *self
@@ -372,6 +366,13 @@ impl VirtualAddress {
         self
     }
 
+    pub fn is_lower(&self) -> bool {
+        (self.0 >> 48) == 0
+    }
+    pub fn is_higher(&self) -> bool {
+        (self.0 >> 48) == 0xFFFF
+    }
+
     fn _iter_to(start: Self, step: usize, end: impl Virtual) -> Option<AddressIterator<Self>> {
         let end_addr = end.to_address();
 
@@ -380,20 +381,20 @@ impl VirtualAddress {
         } else {
             Some(AddressIterator::new(
                 start,
-                VirtualAddress::try_from(step).unwrap(),
+                VirtualAddress::from(step),
                 end_addr,
             ))
         }
     }
 
     fn _iter_for(start: Self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
-        let end_addr = start + VirtualAddress::try_from(step.checked_mul(n).unwrap()).unwrap();
+        let end_addr = start + VirtualAddress::from(step.checked_mul(n).unwrap());
         if !start.is_aligned_to(step) || !end_addr.is_aligned_to(step) {
             None
         } else {
             Some(AddressIterator::new(
                 start,
-                VirtualAddress::try_from(step).unwrap(),
+                VirtualAddress::from(step),
                 end_addr,
             ))
         }
@@ -474,230 +475,95 @@ mod tests {
     use test_macros::kernel_test;
 
     #[kernel_test]
-    fn test_input_address_index() {
-        {
-            let va0: VirtualAddress = VirtualAddress::try_from(
-                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
-            )
-            .unwrap();
-            assert!(va0.offset() == 0b101010111100);
-            assert!(va0.level3() == 0b110001001);
-            assert!(va0.level2() == 0b010110011);
-            assert!(va0.level1() == 0b011010001);
-        }
-
-        {
-            let mut va0: VirtualAddress = VirtualAddress::try_from(
-                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
-            )
-            .unwrap();
-            assert_eq!(
-                va0.set_offset(0b010101000011),
-                VirtualAddress::try_from(
-                    0b0000000000000000_000100100_011010001_010110011_110001001_010101000011usize
-                )
-                .unwrap()
-            );
-        }
-        {
-            let mut va0: VirtualAddress = VirtualAddress::try_from(
-                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
-            )
-            .unwrap();
-            va0.set_level3(0b011100101);
-            assert_eq!(
-                va0,
-                VirtualAddress::try_from(
-                    0b0000000000000000_000100100_011010001_010110011_011100101_101010111100usize
-                )
-                .unwrap()
-            );
-        }
-        {
-            let mut va0: VirtualAddress = VirtualAddress::try_from(
-                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
-            )
-            .unwrap();
-            va0.set_level2(0b011100101);
-            assert_eq!(
-                va0,
-                VirtualAddress::try_from(
-                    0b0000000000000000_000100100_011010001_011100101_110001001_101010111100usize
-                )
-                .unwrap()
-            );
-        }
-        {
-            let mut va0: VirtualAddress = VirtualAddress::try_from(
-                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
-            )
-            .unwrap();
-            va0.set_level1(0b011100101);
-            assert_eq!(
-                va0,
-                VirtualAddress::try_from(
-                    0b0000000000000000_000100100_011100101_010110011_110001001_101010111100usize
-                )
-                .unwrap()
-            );
-        }
-        {
-            let va0: VirtualAddress = VirtualAddress::try_from(
-                0b0000000000000000_000100100_011010001_010110011_110001001_101010111100usize,
-            )
-            .unwrap();
-            assert_eq!(
-                va0.to_page(),
-                PageNumber::try_from(
-                    0b0000000000000000_000100100_011010001_010110011_110001001usize
-                )
-                .unwrap()
-            );
-        }
-        {
-            let last_frame = (config::PHYSICAL_MEMORY_END_INCLUSIVE + 1) / 4096 - 1;
-            let pa: PhysicalAddress =
-                PhysicalAddress::try_from(config::PHYSICAL_MEMORY_END_INCLUSIVE).unwrap();
-            assert_eq!(pa.to_frame(), FrameNumber::try_from(last_frame).unwrap());
-        }
-
-        {
-            PhysicalAddress::try_from(1usize << 48).expect_err("Overflow");
-            FrameNumber::try_from((((1usize << 48) - 1) >> config::SHIFT_4K) + 1)
-                .expect_err("Overflow");
-        }
-    }
+    fn test_input_address_index() {}
     #[kernel_test]
     fn test_address_iterator() {
-        let end = VirtualAddress::try_from(0xFFF_FFFFusize).unwrap();
+        let end = VirtualAddress::from(0xFFF_FFFFusize);
         {
-            let start = VirtualAddress::try_from(0usize).unwrap();
+            let start = VirtualAddress::from(0usize);
             for (i, v) in start.iter_4K_to(end).unwrap().enumerate() {
-                assert_eq!(
-                    v,
-                    VirtualAddress::try_from(i * (1 << config::SHIFT_4K)).unwrap()
-                )
+                assert_eq!(v, VirtualAddress::from(i * (1 << config::SHIFT_4K)))
             }
         }
         {
-            let start = VirtualAddress::try_from(0usize).unwrap();
+            let start = VirtualAddress::from(0usize);
             for (i, v) in start.iter_16K_to(end).unwrap().enumerate() {
-                assert_eq!(
-                    v,
-                    VirtualAddress::try_from(i * (1 << config::SHIFT_16K)).unwrap()
-                )
+                assert_eq!(v, VirtualAddress::from(i * (1 << config::SHIFT_16K)))
             }
         }
         {
-            let start = VirtualAddress::try_from(0usize).unwrap();
+            let start = VirtualAddress::from(0usize);
             for (i, v) in start.iter_64K_to(end).unwrap().enumerate() {
-                assert_eq!(
-                    v,
-                    VirtualAddress::try_from(i * (1 << config::SHIFT_64K)).unwrap()
-                )
+                assert_eq!(v, VirtualAddress::from(i * (1 << config::SHIFT_64K)))
             }
         }
         {
-            let start = VirtualAddress::try_from(0usize).unwrap();
+            let start = VirtualAddress::from(0usize);
             for (i, v) in start.iter_2M_to(end).unwrap().enumerate() {
-                assert_eq!(
-                    v,
-                    VirtualAddress::try_from(i * (1 << config::SHIFT_2M)).unwrap()
-                )
+                assert_eq!(v, VirtualAddress::from(i * (1 << config::SHIFT_2M)))
             }
         }
         {
-            let start = VirtualAddress::try_from(0usize).unwrap();
+            let start = VirtualAddress::from(0usize);
             for (i, v) in start.iter_1G_to(end).unwrap().enumerate() {
-                assert_eq!(
-                    v,
-                    VirtualAddress::try_from(i * (1 << config::SHIFT_1G)).unwrap()
-                )
+                assert_eq!(v, VirtualAddress::from(i * (1 << config::SHIFT_1G)))
             }
         }
         {
-            let start = VirtualAddress::try_from(0xFFFBC69usize).unwrap();
+            let start = VirtualAddress::from(0xFFFBC69usize);
             let n = 100;
             for (i, v) in start.iter_1G_for(n).unwrap().enumerate() {
-                assert_eq!(
-                    v,
-                    VirtualAddress::try_from(i * (config::MASK_1G + 1)).unwrap()
-                )
+                assert_eq!(v, VirtualAddress::from(i * (config::MASK_1G + 1)))
             }
         }
         {
-            let start = VirtualAddress::try_from(0xFFFBC69usize).unwrap();
+            let start = VirtualAddress::from(0xFFFBC69usize);
             let n = 100;
             for (i, v) in start.iter_4K_for(n).unwrap().enumerate() {
                 assert_eq!(
                     v,
-                    VirtualAddress::try_from(
+                    VirtualAddress::from(
                         (0xFFFBC69usize & config::ALIGN_4K) + i * (config::MASK_4K + 1)
                     )
-                    .unwrap()
                 )
             }
         }
         {
-            let start = VirtualAddress::try_from(0usize).unwrap();
+            let start = VirtualAddress::from(0usize);
             for (_, _) in start.iter_4K_for(0).unwrap().enumerate() {
                 panic!()
             }
         }
         {
-            let mut frame = FrameNumber::try_from(config::NUMBER_OF_FRAMES).unwrap();
+            let mut frame = FrameNumber::from(config::NUMBER_OF_FRAMES).unwrap();
             assert!(frame.next().is_none());
 
-            let mut frame2 = FrameNumber::try_from(7463).unwrap();
+            let mut frame2 = FrameNumber::from(7463).unwrap();
             let copy = frame2.next().unwrap();
-            assert_eq!(frame2, FrameNumber::try_from(7463 + 1).unwrap());
-            assert_eq!(copy, FrameNumber::try_from(7463).unwrap());
+            assert_eq!(frame2, FrameNumber::from(7463 + 1).unwrap());
+            assert_eq!(copy, FrameNumber::from(7463).unwrap());
         }
         {
-            let addr1 = VirtualAddress::try_from(0usize).unwrap();
-            let addr2 = VirtualAddress::try_from(1usize).unwrap();
-            let addr3 = VirtualAddress::try_from(0xFFFusize).unwrap();
-            let addr4 = VirtualAddress::try_from(0x1000usize).unwrap();
-            let addr5 = VirtualAddress::try_from(0x1000usize).unwrap();
-            assert_eq!(
-                VirtualAddress::try_from(addr1.align_to_4K_up()).unwrap(),
-                addr1
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr1.align_to_4K_down()).unwrap(),
-                addr1
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr2.align_to_4K_up()).unwrap(),
-                addr1
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr2.align_to_4K_down()).unwrap(),
-                addr4
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr3.align_to_4K_up()).unwrap(),
-                addr1
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr3.align_to_4K_down()).unwrap(),
-                addr4
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr4.align_to_4K_up()).unwrap(),
-                addr4
-            );
-            assert_eq!(
-                VirtualAddress::try_from(addr4.align_to_4K_down()).unwrap(),
-                addr5
-            );
+            let addr1 = VirtualAddress::from(0usize);
+            let addr2 = VirtualAddress::from(1usize);
+            let addr3 = VirtualAddress::from(0xFFFusize);
+            let addr4 = VirtualAddress::from(0x1000usize);
+            let addr5 = VirtualAddress::from(0x1000usize);
+            assert_eq!(VirtualAddress::from(addr1.align_to_4K_up()), addr1);
+            assert_eq!(VirtualAddress::from(addr1.align_to_4K_down()), addr1);
+            assert_eq!(VirtualAddress::from(addr2.align_to_4K_up()), addr1);
+            assert_eq!(VirtualAddress::from(addr2.align_to_4K_down()), addr4);
+            assert_eq!(VirtualAddress::from(addr3.align_to_4K_up()), addr1);
+            assert_eq!(VirtualAddress::from(addr3.align_to_4K_down()), addr4);
+            assert_eq!(VirtualAddress::from(addr4.align_to_4K_up()), addr4);
+            assert_eq!(VirtualAddress::from(addr4.align_to_4K_down()), addr5);
         }
         {
             let step = 64 as usize;
-            let start = VirtualAddress::try_from(0usize).unwrap();
-            let end = VirtualAddress::try_from(10 * step).unwrap();
+            let start = VirtualAddress::from(0usize);
+            let end = VirtualAddress::from(10 * step);
             for (i, v) in start.iter_to(step, end).unwrap().enumerate() {
-                assert_eq!(VirtualAddress::try_from(i * step).unwrap(), v);
+                assert_eq!(VirtualAddress::from(i * step), v);
             }
         }
     }

@@ -223,20 +223,20 @@ impl A64CacheSet {
 
     #[inline(always)]
     pub fn dc_align_to_this_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
-        VirtualAddress::try_from(va.align_up(self.dminline as usize)).unwrap()
+        VirtualAddress::from(va.align_up(self.dminline as usize))
     }
     #[inline(always)]
     pub fn dc_align_to_next_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
-        VirtualAddress::try_from(va.align_down(self.dminline as usize)).unwrap()
+        VirtualAddress::from(va.align_down(self.dminline as usize))
     }
 
     #[inline(always)]
     pub fn ic_align_to_this_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
-        VirtualAddress::try_from(va.align_up(self.iminline as usize)).unwrap()
+        VirtualAddress::from(va.align_up(self.iminline as usize))
     }
     #[inline(always)]
     pub fn ic_align_to_next_cacheline(&self, va: VirtualAddress) -> VirtualAddress {
-        VirtualAddress::try_from(va.align_up(self.iminline as usize)).unwrap()
+        VirtualAddress::from(va.align_up(self.iminline as usize))
     }
 
     #[inline(always)]

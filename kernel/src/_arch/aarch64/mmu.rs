@@ -34,6 +34,8 @@ extern "C" {
     static __bss_end_exclusive: u8;
     static __data_start: u8;
     static __data_end_exclusive: u8;
+    static l1_lower_page_tabel: u8;
+    static l1_higher_page_tabel: u8;
 }
 
 fn config_registers_el1() -> Result<(), ErrorCode> {
@@ -63,8 +65,8 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
         TCR_EL1::IPS::Bits_32 /*pi4 has 4GB memory*/
         + TCR_EL1::T0SZ.val(t0sz) 
         + TCR_EL1::T1SZ.val(t1sz) 
-        + TCR_EL1::TBI0::Used /*Memory Taggging Extension(MTE) is not supported on pi */
-        + TCR_EL1::TBI1::Used /*Memory Taggging Extension(MTE) is not supported on pi */
+        //+ TCR_EL1::TBI0::Used /*Memory Taggging Extension(MTE) is not supported on pi */
+        //+ TCR_EL1::TBI1::Used /*Memory Taggging Extension(MTE) is not supported on pi */
         + TCR_EL1::AS::ASID8Bits /* Sizeof ASID = 8 bits*/
         + TCR_EL1::A1::TTBR0
         + TCR_EL1::TG0::KiB_4
@@ -78,7 +80,6 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
         + TCR_EL1::EPD1::EnableTTBR1Walks          
         + TCR_EL1::EPD0::EnableTTBR0Walks,
     );
-    unsafe_println!("TCR_EL1 = {:#066b}", TCR_EL1.get());
 
 
     // Be careful when change this!
@@ -89,7 +90,6 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
         + MAIR_EL1::Attr1_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
         + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
     );
-    unsafe_println!("MAIR_EL1 = {:#066b}", MAIR_EL1.get());
 
     Ok(())
 }
@@ -98,6 +98,7 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
         
 
 pub fn init() -> Result<(), ErrorCode> {
+    /*
     config_registers_el1()?;
     translation_table::set_up_init_mapping()?;
     /*
@@ -120,12 +121,14 @@ pub fn init() -> Result<(), ErrorCode> {
     barrier::isb(barrier::SY);
 
     unsafe_println!("SCTLR_EL1 = {:#066b}", SCTLR_EL1.get());
+    */
 
     
     MMU.call_once(|| {
         MemoryManagementUnit::new(UnsafeTranslationTable::new(
-            config::L1_VIRTUAL_ADDRESS as *mut L1Entry,
-        ))
+            config::LOWER_L1_VIRTUAL_ADDRESS as *mut L1Entry),
+            UnsafeTranslationTable::new(config::HIGHER_L1_VIRTUAL_ADDRESS as *mut L1Entry),
+        )
     });
     
 
@@ -140,13 +143,15 @@ pub enum BlockSize{
 }
 
 pub struct MemoryManagementUnit {
-    l1: SpinMutex<UnsafeTranslationTable<Level1>>,
+    lower_l1: SpinMutex<UnsafeTranslationTable<Level1>>,
+    higher_l1: SpinMutex<UnsafeTranslationTable<Level1>>,
     cache: A64CacheSet,
 }
 impl MemoryManagementUnit {
-    pub fn new(l1_table: UnsafeTranslationTable<Level1>) -> Self{
+    pub fn new(lower_l1_table: UnsafeTranslationTable<Level1>, higher_l1_table: UnsafeTranslationTable<Level1>) -> Self{
         Self{
-            l1: SpinMutex::new(l1_table),
+            lower_l1: SpinMutex::new(lower_l1_table),
+            higher_l1: SpinMutex::new(higher_l1_table),
             cache: A64CacheSet::new().unwrap(),
         }
     }
@@ -160,10 +165,18 @@ impl MemoryManagementUnit {
         mt: &MemoryType,
         frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
-        self.l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        if va.is_lower(){
+        self.lower_l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        }else{
+        self.higher_l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        }
     }
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
-        self.l1.lock().translate(va)
+        if va.is_lower(){
+        self.lower_l1.lock().translate(va)
+        }else{
+        self.higher_l1.lock().translate(va)
+        }
     }
 
 }

@@ -14,10 +14,9 @@
 #[cfg(test)]
 use core::arch::global_asm;
 
-use crate::{println,unsafe_println};
-use aarch64_cpu::{asm::barrier, asm, registers::*};
-use tock_registers::interfaces::{ReadWriteable,Writeable, Readable};
-use crate::memory::*;
+use crate::{memory::*, println, unsafe_println};
+use aarch64_cpu::{asm, asm::barrier, registers::*};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 extern "C" {
     static __code_start: u8;
@@ -28,61 +27,6 @@ extern "C" {
     static __data_end_exclusive: u8;
     static l1_lower_page_table: u8;
     static initial_stack_top: u8;
-}
-
-fn config_registers_el1()  {
-        // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
-        // currently just identity map
-    let t0sz: u64 = 16 + 9; // start from level 1
-
-
-
-    let is_4kb_page_supported = || -> bool {
-        ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::TGran4) == 0
-    };
-
-
-        
-
-    // Support physical memory up to 64GB
-    TCR_EL1.write(
-        TCR_EL1::IPS::Bits_32 /*pi4 has 4GB memory*/
-        + TCR_EL1::T0SZ.val(t0sz) 
-        + TCR_EL1::TBI0::Ignored /*Memory Taggging Extension(MTE) is not supported on pi */
-        + TCR_EL1::AS::ASID8Bits /* Sizeof ASID = 8 bits*/
-        + TCR_EL1::A1::TTBR0
-        + TCR_EL1::TG0::KiB_4
-        + TCR_EL1::SH0::Inner /*AArch64 assumes all PEs use the same OS are in the same Inner Shareable domain*/
-        + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-        + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-        + TCR_EL1::EPD1::DisableTTBR1Walks          + TCR_EL1::EPD0::EnableTTBR0Walks,
-    );
-
-    // Be careful when change this!
-    // We use the attribute index in some places when we set the block/page table entry AttrIdx
-    // Remember to change those if MAIR_EL1 is modified.
-    MAIR_EL1.write(
-        MAIR_EL1::Attr1_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
-        + MAIR_EL1::Attr1_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
-        + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
-    );
-
-    TTBR0_EL1.modify(TTBR0_EL1::ASID.val(0 as u64));
-    unsafe{
-    TTBR0_EL1.set_baddr(&l1_lower_page_table as * const _ as u64);
-    }
-    barrier::isb(barrier::SY);
-
-    SCTLR_EL1.modify(
-        SCTLR_EL1::M::Enable
-        + SCTLR_EL1::C::Cacheable
-        + SCTLR_EL1::I::Cacheable
-        + SCTLR_EL1::WXN::Disable
-        + SCTLR_EL1::UCI::Trap, // Cache maintenance instruction at EL0 are not allowed
-    );
-
-    barrier::isb(barrier::SY);
-
 }
 
 #[inline(always)]
@@ -109,15 +53,10 @@ unsafe fn prepare_el2_to_el1() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _start_rust(x0:u64) -> ! {
-
+pub unsafe extern "C" fn _start_rust(x0: u64) -> ! {
     {
-        unsafe_println!("x0 = {:#066x}",x0);
-
+        unsafe_println!("x0 = {:#066x}", x0);
     }
-    
-
-
 
     prepare_el2_to_el1();
     asm::eret()

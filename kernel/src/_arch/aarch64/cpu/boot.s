@@ -66,7 +66,10 @@ _start:
     cmp         x1, x2
     b.ne        .L_parking_loop
 
-    b           .L_el2_to_el1
+
+
+
+    b           .L_el2_to_el1      /*SP_EL1 will be set up open return*/
     
 .L_in_el1:
     adr_load    x0, __bss_start
@@ -99,8 +102,23 @@ _start:
 
     bl .L_map_lower_half
     bl .L_map_higher_half
+    bl .L_enable_paging
 
-    b kernel_main
+    //adjust the stack to the higher address
+    //it seems we cannot access SP_EL1 anymore when we have switched to el1
+    ldr                 x1, =.L_KERNEL_BASE
+    adr_load            x2, initial_stack_top
+    add                 x2, x1, x2
+    mov                 sp,  x2
+
+    ldr                 x1, =.L_KERNEL_BASE
+    adr_load            x2, kernel_main
+    add                 x2, x1, x2
+    br                  x2
+
+
+
+
 
 // x0: start address
 // x1: end address exclusive
@@ -113,8 +131,9 @@ _start:
 //assume the kenel is less than 2MB
 .L_map_lower_half:
 
-    adr_load            x0, l1_lower_page_table
     mov                 x6, lr      // save the link register
+
+    adr_load            x0, l1_lower_page_table
 
     //fill in the recursive entry
     //L1[511] = L1
@@ -171,6 +190,8 @@ _start:
     ldr                 x3, =.RWNORMAL
 
     bl .L_fill_l3_table
+
+
 
     //peripheral
     adr_load            x0, l2_higher_page_table
@@ -232,11 +253,14 @@ _start:
     ldr                 x0, =.HCR_EL2_val 
     msr                 HCR_EL2, x0
 
-    ldr                 x0, =.SPSR_EL2_val
+    ldr                 x0, =.SPSR_EL2_val //all interrupts are masked
     msr                 SPSR_EL2, x0
 
     adr_load            x0, .L_in_el1 
     msr                 ELR_EL2, x0
+
+    adr_load            x0, __exception_vector_start
+    msr                 VBAR_EL1, x0
 
     adr_load            x0, initial_stack_top 
     msr                 SP_EL1, x0
@@ -244,13 +268,69 @@ _start:
     eret
     
 
+
 .L_map_higher_half:
+    mov                 x6, lr      // save the link register
+
+    adr_load            x0, l1_higher_page_table
+
+    //fill in the recursive entry
+    //L1[511] = L1
+    adr_load            x1, l1_higher_page_table
+    ldr                 x2, =.TABLE_ATTR
+    make_table_entry    x1, x1, x2
+    ldr                 x2, =.RECURSIVE_INDEX
+    str                 x1, [x0, x2, LSL #3]      
+
+    //L1[0] = lower L2
+    adr_load            x1, l2_lower_page_table
+    ldr                 x2, =.TABLE_ATTR
+    make_table_entry    x1, x1, x2
+    str                 x1, [x0, xzr, LSL #3]      
+
+
+
+    //L1[3] = higher L2 /*PI4 peripheral starts at 0xFE00_0000*/
+    adr_load            x1, l2_higher_page_table
+    ldr                 x2, =.TABLE_ATTR
+    make_table_entry    x1, x1, x2
+    ldr                 x3, =.PERIPHERAL_START
+    get_level1_index    x4, x3
+    str                 x1, [x0, x4, LSL #3]      
+
+
+    mov lr, x6
     ret
+
     
-.L_config_mmu:
+.L_enable_paging:
+    adr_load           x0, l1_lower_page_table 
+    msr                ttbr0_el1, x0
+    
+
+    adr_load           x0, l1_higher_page_table 
+    msr                ttbr1_el1, x0
+
+    ldr                x0, =.TCR_EL1_val
+    msr                TCR_EL1, x0
+
+
+    ldr                x0, =.MAIR_EL1_val
+    msr                MAIR_EL1, x0
+
+
+    ldr                x0, =.SCTLR_EL1_val
+    msr                SCTLR_EL1, x0
+
+    isb                sy
     ret
     
 
+.L_qemu_print:
+    ldr         x0, =.L_QEMU_CONSOLE
+    mov         x1, #0b1000111
+    str         x1, [x0]
+    ret
 
 
 //x0 start address
@@ -277,6 +357,9 @@ l1_lower_page_table:
     .space 4096, 0
 .global l1_higher_page_table
 l1_higher_page_table:
+    .space 4096, 0
+.global l0_page_table
+l0_page_table:
     .space 4096, 0
 l2_lower_page_table:
     .space 4096, 0

@@ -3,21 +3,13 @@
  * Copyright (c) 2018-2022 Andre Richter <andre.o.richter@gmail.com>
  */
 
-__rpi_phys_dram_start_addr = 0;
+
+KERNEL_BASE = 0xFFFFFF8000000000;
+/*KERNEL_BASE = 0x000000000000;*/
 /* The physical address at which the the kernel binary will be loaded by the Raspberry's firmware */
-__rpi_phys_binary_load_addr = 0x80000;
-
-/**/
-
-PAGE_SIZE = 4K;
-PAGE_MASK = PAGE_SIZE - 1;
-/*KERNEL_BASE = 0xFFFF000000000000;*/
-KERNEL_BASE = 0;
-KERNEL_OFFSET = 0x80000;
+LOADER_OFFSET = 0x80000;
 
 
-
-ENTRY(__code_start)
 
 /* Flags:
  *     4 == R
@@ -36,11 +28,9 @@ PHDRS
 
 SECTIONS
 {
-    . = KERNEL_OFFSET;
-    __kernel_offset = .;
+    . = KERNEL_BASE;
+    . += LOADER_OFFSET;
 
-
-    ASSERT((. & PAGE_MASK) == 0, "End of boot core stack is not page aligned")
 
     /***********************************************************************************************
     * Code + RO Data 
@@ -50,7 +40,8 @@ SECTIONS
     {
         KEEP(*(.text._start))
         *(.text._start_arguments)
-        *(.text._start_rust)
+        __kernel_main = .;
+        *(.text.kernel_main)
         *(.text._exception)
         *(.text*)
     } :segment_code
@@ -58,7 +49,7 @@ SECTIONS
     .rodata : AT (ADDR(.rodata) - KERNEL_BASE)
     { 
         *(.rodata*) 
-        . = ALIGN(PAGE_SIZE);
+        . = ALIGN(4K);
         __code_end_exclusive = .;
     } :segment_code
 
@@ -70,7 +61,7 @@ SECTIONS
     {
         __data_start = .;
         *(.data*);
-        . = ALIGN(PAGE_SIZE);
+        . = ALIGN(4K);
         __data_end_exclusive = .;
     }:segment_data
 
@@ -82,15 +73,16 @@ SECTIONS
         /*
         *(page_table);
         */
-        . = ALIGN(PAGE_SIZE);
+        . = ALIGN(4K);
         __bss_end_exclusive = .;
     }: segment_bss
 
 
     .page_table ALIGN(4K) (NOLOAD) : AT (ADDR(.page_table) - KERNEL_BASE)
     {
+        __page_table_start = .;
         *(page_table);
-        . = ALIGN(PAGE_SIZE);
+        . = ALIGN(4K);
         __page_table_end_exclusive = .;
     }: segment_table
 
@@ -101,6 +93,7 @@ SECTIONS
         *(stack);
         __stack_top = .;
     }: segment_stack
+    
 
 
     /***********************************************************************************************

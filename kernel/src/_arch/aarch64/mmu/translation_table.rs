@@ -61,7 +61,8 @@ impl<L: TranslationTableLevel> UnsafeTranslationTable<L> {
 impl UnsafeTranslationTable<Level1> {
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         let l1_entry = self[va.level1()].get();
-        println!("l2_table_address : {:#066b}", Self::l2_table_address(va));
+        println!("after");
+        println!("l2_table_address : {:#018x}", Self::l2_table_address(va));
         println!("l1_entry {}", l1_entry);
 
         match l1_entry {
@@ -114,15 +115,23 @@ impl UnsafeTranslationTable<Level1> {
     }
 
     fn l2_table_address(va: VirtualAddress) -> usize {
+        let mut res: usize = 0;
+        if va.is_higher() {
+            res = config::KERNEL_OFFSET;
+        }
         let l1_index = va.level1();
-        (config::RECURSIVE_L1_INDEX << config::L1_INDEX_SHIFT)
+        res | (config::RECURSIVE_L1_INDEX << config::L1_INDEX_SHIFT)
             | (config::RECURSIVE_L1_INDEX << config::L2_INDEX_SHIFT)
             | (l1_index << config::L3_INDEX_SHIFT)
     }
     fn l3_table_address(va: VirtualAddress) -> usize {
+        let mut res: usize = 0;
+        if va.is_higher() {
+            res = config::KERNEL_OFFSET;
+        }
         let l1_index = va.level1();
         let l2_index = va.level2();
-        (config::RECURSIVE_L1_INDEX << config::L1_INDEX_SHIFT)
+        res | (config::RECURSIVE_L1_INDEX << config::L1_INDEX_SHIFT)
             | (l1_index << config::L2_INDEX_SHIFT)
             | (l2_index << config::L3_INDEX_SHIFT)
     }
@@ -333,15 +342,15 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
     // On pi3, L1[MMIO_START] = 0
     // On pi4, L1[MMIO_START] = 3
     {
-        let code_start = VirtualAddress::try_from(code_start_addr).unwrap();
-        let code_end = VirtualAddress::try_from(code_end_addr).unwrap();
-        let data_start = VirtualAddress::try_from(data_start_addr).unwrap();
-        let data_end = VirtualAddress::try_from(data_end_addr).unwrap();
-        let bss_start = VirtualAddress::try_from(bss_start_addr).unwrap();
-        let bss_end = VirtualAddress::try_from(bss_end_addr).unwrap();
-        let _l1_page_table_start = VirtualAddress::try_from(l1_page_table_start_addr).unwrap();
-        let peripheral_start = VirtualAddress::try_from(mmio::PERIPHERAL_START).unwrap();
-        let memory_end = VirtualAddress::try_from(config::PHYSICAL_MEMORY_END_EXCLUSIVE).unwrap();
+        let code_start = VirtualAddress::from(code_start_addr);
+        let code_end = VirtualAddress::from(code_end_addr);
+        let data_start = VirtualAddress::from(data_start_addr);
+        let data_end = VirtualAddress::from(data_end_addr);
+        let bss_start = VirtualAddress::from(bss_start_addr);
+        let bss_end = VirtualAddress::from(bss_end_addr);
+        let _l1_page_table_start = VirtualAddress::from(l1_page_table_start_addr);
+        let peripheral_start = VirtualAddress::from(mmio::PERIPHERAL_START);
+        let memory_end = VirtualAddress::from(config::PHYSICAL_MEMORY_END_EXCLUSIVE);
 
         let free_frame = PhysicalAddress::try_from(l1_page_table_end_addr)
             .unwrap()
@@ -499,7 +508,7 @@ pub fn set_up_init_mapping() -> Result<(), ErrorCode> {
             }
         };
 
-        let va_start = VirtualAddress::try_from(0usize).unwrap();
+        let va_start = VirtualAddress::from(0usize);
         // table_walk_and_identity_map_2M(va_start, RWXNORMAL, &mut linear_allocator).unwrap();
         // unsafe_println!("boot stack pages: {:?} -> {:?}", va_start, boot_stack_end);
         // va_start.iter_4K_to(boot_stack_end).unwrap().for_each(|va| {
