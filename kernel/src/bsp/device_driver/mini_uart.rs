@@ -1,5 +1,5 @@
 use crate::{
-    bsp::{device_driver::utils::*, mmio::MINI_UART_START},
+    bsp::{device_driver::utils::*, mmio::*, PERIPHERAL_BASE},
     cpu::nop,
 };
 fn mu_baud_reg(clock: u64, baud: u32) -> u32 {

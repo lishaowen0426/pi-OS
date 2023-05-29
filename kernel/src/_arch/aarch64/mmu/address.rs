@@ -8,10 +8,16 @@ use core::{
 };
 
 macro_rules! declare_address {
-    ($name:ident, $tt:ty, $lit: literal $(,)?) => {
+    ($name:ident, $name_range: ident, $tt:ty, $lit: literal $(,)?) => {
         #[derive(Default, Eq, PartialEq, Ord, PartialOrd, Clone, Copy)]
         #[repr(transparent)]
         pub struct $name($tt);
+
+        #[repr(C)]
+        pub struct $name_range {
+            start: $name,
+            end: $name,
+        }
 
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -21,6 +27,16 @@ macro_rules! declare_address {
         impl fmt::LowerHex for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, $lit, self.0)
+            }
+        }
+        impl fmt::Display for $name_range {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}  ->  {}", self.start, self.end)
+            }
+        }
+        impl fmt::Debug for $name_range {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:?}  ->  {:?}", self.start, self.end)
             }
         }
 
@@ -176,15 +192,34 @@ macro_rules! impl_number {
         }
     };
 }
-declare_address!(VirtualAddress, usize, "{:#018x}");
-declare_address!(PhysicalAddress, usize, "{:#018x}");
-declare_address!(PageNumber, usize, "{}");
-declare_address!(FrameNumber, usize, "{}");
+declare_address!(VirtualAddress, VaRange, usize, "{:#018x}");
+declare_address!(PhysicalAddress, PaRange, usize, "{:#018x}");
+declare_address!(PageNumber, PageRange, usize, "{}");
+declare_address!(FrameNumber, FrameRange, usize, "{}");
 
 impl_address!(VirtualAddress);
 impl_address!(PhysicalAddress);
 impl_number!(PageNumber);
 impl_number!(FrameNumber);
+
+// 32 bytes
+#[repr(C)]
+pub struct Mapped {
+    va: VaRange,
+    pa: PaRange,
+}
+
+impl fmt::Display for Mapped {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "va {} is mapped to pa {}", self.va, self.pa)
+    }
+}
+
+impl fmt::Debug for Mapped {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "va {:?} is mapped to pa {:?}", self.va, self.pa)
+    }
+}
 
 impl fmt::Debug for VirtualAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

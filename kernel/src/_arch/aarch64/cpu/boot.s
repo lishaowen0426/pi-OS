@@ -7,13 +7,18 @@
 .endm
 
 
-// Load a link-time address
-.macro adr_link register, symbol
-	movz	\register, #:abs_g2:\symbol
-	movk	\register, #:abs_g1_nc:\symbol
-	movk	\register, #:abs_g0_nc:\symbol
+
+
+.macro adr_link dest, symbol
+    ldr                 x0, =.L_KERNEL_BASE
+    adr_load            x1, \symbol
+    add                 \dest, x0, x1
+
 .endm
 
+.macro make_invalid_entry dest
+    mov \dest, xzr
+.endm
 
 .macro make_table_entry  dest, src,  memory_type
     orr \dest, \src,  \memory_type
@@ -74,28 +79,34 @@ _start:
 .L_in_el1:
     adr_load    x0, __bss_start
     adr_load    x1, __bss_end_exclusive
-
     bl          clear_memory_range
-
-
-.L_prepare_rust:
 
     adr_load    x0, l1_lower_page_table
     add         x1, x0, #4096 
-    bl clear_memory_range
+    bl          clear_memory_range
+
+    adr_load    x0, l1_higher_page_table
+    add         x1, x0, #4096 
+    bl          clear_memory_range
 
     adr_load    x0, l2_lower_page_table
     add         x1, x0, #4096
-    bl clear_memory_range
+    bl          clear_memory_range
 
     adr_load    x0, l2_higher_page_table
     add         x1, x0, #4096
-    bl clear_memory_range
+    bl          clear_memory_range
 
-    adr_load    x0, l3_page_table
+    adr_load    x0, l3_lower_page_table
     add         x1, x0, #4096
-    bl clear_memory_range
+    bl          clear_memory_range
 
+
+    adr_load    x0, l3_higher_page_table
+    add         x1, x0, #4096
+    bl          clear_memory_range
+
+.L_prepare_rust:
 
 
     bl init_mini_uart
@@ -104,29 +115,27 @@ _start:
     bl .L_map_higher_half
     bl .L_enable_paging
 
+
+.L_higher_half:
+
     //adjust the stack to the higher address
     //it seems we cannot access SP_EL1 anymore when we have switched to el1
-    ldr                 x1, =.L_KERNEL_BASE
-    adr_load            x2, initial_stack_top
-    add                 x2, x1, x2
+    adr_link            x2, initial_stack_top
     mov                 sp,  x2
 
-    ldr                 x1, =.L_KERNEL_BASE
-    adr_load            x2, kernel_main
-    add                 x2, x1, x2
+    adr_link            x2, .L_prepare_boot_info
+    blr                 x2
+    mov                 x3, x0  //x0 is used in adr_link, save it in other register
+
+    adr_link            x2, kernel_main   
+    mov                 x0, x3
     br                  x2
 
 
 
 
 
-// x0: start address
-// x1: end address exclusive
-.L_clear_page_table:
-    stp         xzr, xzr, [x0], #16
-    cmp         x0, x1
-    b.ne        .L_clear_page_table
-    ret 
+
 
 //assume the kenel is less than 2MB
 .L_map_lower_half:
@@ -150,7 +159,7 @@ _start:
     str                 x1, [x0, xzr, LSL #3]      
 
     //lower L2[0] = L3
-    adr_load            x1, l3_page_table
+    adr_load            x1, l3_lower_page_table
     ldr                 x2, =.TABLE_ATTR
     make_table_entry    x1, x1, x2
     adr_load            x3, l2_lower_page_table
@@ -167,7 +176,7 @@ _start:
     //update L3 according to memory type
     
     //boot stack
-    adr_load            x0, l3_page_table
+    adr_load            x0, l3_lower_page_table
     adr_load            x1, initial_stack_bottom
     adr_load            x2, initial_double_stack_top
     ldr                 x3, =.RWNORMAL
@@ -176,7 +185,7 @@ _start:
 
 
     //code + rodata
-    adr_load            x0, l3_page_table
+    adr_load            x0, l3_lower_page_table
     adr_load            x1, __code_start
     adr_load            x2, __data_end_exclusive
     ldr                 x3, =.XNORMAL
@@ -184,7 +193,7 @@ _start:
     bl .L_fill_l3_table
     
     //bss    
-    adr_load            x0, l3_page_table
+    adr_load            x0, l3_lower_page_table
     adr_load            x1, __bss_start
     adr_load            x2, __bss_end_exclusive
     ldr                 x3, =.RWNORMAL
@@ -205,6 +214,9 @@ _start:
     mov lr, x6
     ret
     
+.L_unmap_lower_half:
+    ret
+
 
 //x0: l3 base address
 //x1: start address
@@ -282,7 +294,7 @@ _start:
     ldr                 x2, =.RECURSIVE_INDEX
     str                 x1, [x0, x2, LSL #3]      
 
-    //L1[0] = lower L2
+    //L1[0] = lower L2, lower l2[]
     adr_load            x1, l2_lower_page_table
     ldr                 x2, =.TABLE_ATTR
     make_table_entry    x1, x1, x2
@@ -324,6 +336,63 @@ _start:
 
     isb                sy
     ret
+
+// put address of the boot info in x0
+// Note that when you call this function
+// you're LIKELY already in higher half
+// this effects how you use the PC-relative address
+.L_prepare_boot_info:
+    ldr     x0, =.L_KERNEL_BASE
+    sub     sp, sp, #176
+
+    //code_and_ro
+    adr_load    x1, __code_start
+    adr_load    x2, __code_end_exclusive
+    sub         x3,  x1,  x0      //the lower half where it's identity mapped
+    sub         x4,  x2,  x0
+    stp         x1, x2, [sp, #16 * 0]
+    stp         x3, x4, [sp, #16 * 1]
+
+    //bss
+    adr_load    x1, __bss_start
+    adr_load    x2, __bss_end_exclusive
+    sub         x3,  x1,  x0      
+    sub         x4,  x2,  x0
+    stp         x1, x2, [sp, #16 * 2]
+    stp         x3, x4, [sp, #16 * 3]
+
+    //stack
+    adr_load    x1, initial_stack_bottom
+    adr_load    x2, initial_stack_top
+    sub         x3,  x1,  x0      
+    sub         x4,  x2,  x0
+    stp         x1, x2, [sp, #16 * 4]
+    stp         x3, x4, [sp, #16 * 5]
+
+    //peripheral
+    
+    ldr         x1,  =.PERIPHERAL_START
+    ldr         x2,  =.PERIPHERAL_END
+    stp         x1, x2, [sp, #16 * 6]
+    stp         x1, x2, [sp, #16 * 7]
+
+/*
+    //free frame
+    adr_load    x1, initial_stack_top
+    sub         x1,  x1,  x0      
+    adr_load    x2, .PERIPHERAL_START
+    sub         x2,  x2,  x0      
+    stp         x1, x2, [sp, #16 * 8]
+    */
+    
+
+
+
+    mov         x0, sp
+
+    ret
+
+    
     
 
 .L_qemu_print:
@@ -358,16 +427,14 @@ l1_lower_page_table:
 .global l1_higher_page_table
 l1_higher_page_table:
     .space 4096, 0
-.global l0_page_table
-l0_page_table:
-    .space 4096, 0
 l2_lower_page_table:
     .space 4096, 0
 l2_higher_page_table:    /*peripheral*/
     .space 4096, 0
-l3_page_table:
+l3_lower_page_table:
     .space 4096, 0
-
+l3_higher_page_table:
+    .space 4096, 0
 
 
 .section stack, "aw", @nobits

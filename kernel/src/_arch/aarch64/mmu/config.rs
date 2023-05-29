@@ -56,6 +56,8 @@ pub mod config {
         | (RECURSIVE_L1_INDEX << L2_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L3_INDEX_SHIFT);
 
+    pub const STACK_MMIO_L1_INDEX: usize = RECURSIVE_L1_INDEX - 1;
+
     #[cfg(feature = "bsp_rpi3")]
     pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x3FFF_FFFF;
     #[cfg(feature = "bsp_rpi4")]

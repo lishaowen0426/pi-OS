@@ -100,7 +100,6 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
 pub fn init() -> Result<(), ErrorCode> {
     /*
     config_registers_el1()?;
-    translation_table::set_up_init_mapping()?;
     /*
     unsafe{
         let l1_pa = PhysicalAddress::try_from(&__l1_page_table_start as * const _ as usize).unwrap();

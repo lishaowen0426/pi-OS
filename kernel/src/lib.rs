@@ -29,6 +29,7 @@
 #![reexport_test_harness_main = "test_main"]
 #![test_runner(crate::test_runner)]
 
+mod boot_const;
 mod bsp;
 mod console;
 mod cpu;
@@ -53,19 +54,56 @@ extern "C" {
 }
 
 use aarch64_cpu::registers::*;
+use core::fmt;
 use cpu::registers::*;
 use memory::*;
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
+// 32 bytes * 4 + 16 + 16 + 16
+#[repr(C)]
+pub struct BootInfo {
+    code_and_ro: Mapped,
+    bss: Mapped,
+    stack: Mapped,
+    peripheral: Mapped,
+
+    free_frame: PaRange,
+    higher_free_page: VaRange,
+    lower_free_page: VaRange,
+}
+
+impl fmt::Display for BootInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "code and ro: {}", self.code_and_ro)?;
+        writeln!(f, "bss : {}", self.bss)?;
+        writeln!(f, "stack: {}", self.stack)?;
+        writeln!(f, "peripheral: {}", self.peripheral)?;
+        writeln!(f, "free frame: {}", self.free_frame)?;
+        writeln!(f, "lower free page: {}", self.lower_free_page)?;
+        write!(f, "higher free page: {}", self.higher_free_page)
+    }
+}
+
+impl fmt::Debug for BootInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "code and ro: {:?}", self.code_and_ro)?;
+        writeln!(f, "bss : {:?}", self.bss)?;
+        writeln!(f, "stack: {:?}", self.stack)?;
+        writeln!(f, "peripheral: {:?}", self.peripheral)?;
+        writeln!(f, "free frame: {:?}", self.free_frame)?;
+        writeln!(f, "lower free page: {:?}", self.lower_free_page)?;
+        write!(f, "higher free page: {:?}", self.higher_free_page)
+    }
+}
+
 #[cfg(not(test))]
 #[no_mangle]
-pub unsafe fn kernel_main(x0: u64) -> ! {
-    unsafe_println!(" x0 = {:#018x}", x0);
-
+pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     exception::init().unwrap();
-    memory::init().unwrap();
     console::init().unwrap();
+    memory::init().unwrap();
 
+    println!(" bootinfo:\n{:?}", boot_info);
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 

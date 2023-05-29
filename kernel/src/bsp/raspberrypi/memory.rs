@@ -23,6 +23,9 @@
 //! | .got                                  |
 //! |                                       |
 
+use crate::memory::config;
+pub const PERIPHERAL_BASE: usize =
+    config::KERNEL_OFFSET | (config::STACK_MMIO_L1_INDEX << config::L1_INDEX_SHIFT);
 const GPIO_OFFSET: usize = 0x0020_0000;
 const UART_OFFSET: usize = 0x0020_1000;
 const MINI_UART_OFFSET: usize = 0x0021_5000;
