@@ -51,9 +51,11 @@ extern "C" {
     static __data_end_exclusive: u8;
     static __kernel_main: u8;
     static initial_stack_top: u8;
+
 }
 
 use aarch64_cpu::registers::*;
+use boot_const::*;
 use core::fmt;
 use cpu::registers::*;
 use memory::*;
@@ -98,12 +100,12 @@ impl fmt::Debug for BootInfo {
 
 #[cfg(not(test))]
 #[no_mangle]
-pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
+// pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
+pub unsafe fn kernel_main(x0: u64) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
     memory::init().unwrap();
-
-    println!(" bootinfo:\n{:?}", boot_info);
+    println!(" bootinfo:\n{:#018x}", STACK_TOP_VIRTUAL);
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 

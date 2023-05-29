@@ -6,7 +6,11 @@
 	add	    \register, \register, #:lo12:\symbol
 .endm
 
-
+.macro adr_absolute dest, symbol
+    movz x0, #:abs_g2:\symbol		// bits 32-47, overflow check
+    movk x0, #:abs_g1_nc:\symbol	// bits 16-31, no overflow check
+    movk x0, #:abs_g0_nc:\symbol	// bits  0-15, no overflow check
+.endm
 
 
 .macro adr_link dest, symbol
@@ -49,6 +53,9 @@
     mov \dest, \src, LSR .L3_SHIFT
     and \dest, \dest, .INDEX_MASK
 .endm
+
+
+
 
 
 
@@ -113,23 +120,9 @@ _start:
 
     bl .L_map_lower_half
     bl .L_map_higher_half
-    bl .L_enable_paging
+    b  .L_enable_paging
 
 
-.L_higher_half:
-
-    //adjust the stack to the higher address
-    //it seems we cannot access SP_EL1 anymore when we have switched to el1
-    adr_link            x2, initial_stack_top
-    mov                 sp,  x2
-
-    adr_link            x2, .L_prepare_boot_info
-    blr                 x2
-    mov                 x3, x0  //x0 is used in adr_link, save it in other register
-
-    adr_link            x2, kernel_main   
-    mov                 x0, x3
-    br                  x2
 
 
 
@@ -214,8 +207,6 @@ _start:
     mov lr, x6
     ret
     
-.L_unmap_lower_half:
-    ret
 
 
 //x0: l3 base address
@@ -287,14 +278,14 @@ _start:
     adr_load            x0, l1_higher_page_table
 
     //fill in the recursive entry
-    //L1[511] = L1
+    //higher L1[511] = L1
     adr_load            x1, l1_higher_page_table
     ldr                 x2, =.TABLE_ATTR
     make_table_entry    x1, x1, x2
     ldr                 x2, =.RECURSIVE_INDEX
     str                 x1, [x0, x2, LSL #3]      
 
-    //L1[0] = lower L2, lower l2[]
+    //higher L1[0] = lower L2, lower l2[0] = lower l3
     adr_load            x1, l2_lower_page_table
     ldr                 x2, =.TABLE_ATTR
     make_table_entry    x1, x1, x2
@@ -302,13 +293,58 @@ _start:
 
 
 
-    //L1[3] = higher L2 /*PI4 peripheral starts at 0xFE00_0000*/
+    //higher L1[STACK_MMIO_L1_INDEX(510)] = higher L2 /*PI4 peripheral at higher L2[496 - 511]*/
     adr_load            x1, l2_higher_page_table
     ldr                 x2, =.TABLE_ATTR
     make_table_entry    x1, x1, x2
+    ldr                 x3, =.L_STACK_MMIO_L1_INDEX
+    str                 x1, [x0, x3, LSL #3]      
+
+    //fill higher l2 with MMIO
+    adr_load            x0, l2_higher_page_table
+    ldr                 x1, =.PERIPHERAL_START
+    ldr                 x2, =.PERIPHERAL_END
     ldr                 x3, =.PERIPHERAL_START
-    get_level1_index    x4, x3
-    str                 x1, [x0, x4, LSL #3]      
+    get_level2_index    x1, x1
+    get_level2_index    x2, x2   //should be  496 - 511
+    ldr                 x4, =.RWDEVICE
+1:
+    make_block_entry    x5, x3, x4
+    str                 x5, [x0, x1, LSL #3]
+    add                 x1,  x1, #1
+    add                 x3, x3, #0x200000
+    cmp                 x1, x2
+    b.le                1b
+
+
+    //higher l2[495] = higher l3 
+    adr_load            x0, l2_higher_page_table
+    adr_load            x1, l3_higher_page_table
+    ldr                 x2, =.PERIPHERAL_START
+    get_level2_index    x2, x2
+    sub                 x2, x2, #1
+    ldr                 x3, =.TABLE_ATTR
+    make_table_entry    x4, x1, x3
+    str                 x4, [x0, x2, LSL #3]
+
+
+    //fill higher l3 with stack, the double stack top starts from higher L3[511]
+    adr_load           x0, l3_higher_page_table
+    adr_load           x1, initial_double_stack_top
+    adr_load           x2, initial_stack_bottom
+    mov                x3, #511
+    ldr                x4, =.RWNORMAL
+
+2:
+    make_page_entry    x5, x1, x4
+    str                x5, [x0, x3, LSL #3]
+    sub                x1,  x1, #0x1000
+    sub                x3,  x3, #1
+    cmp                x1,   x2
+    b.gt               2b 
+    
+
+
 
 
     mov lr, x6
@@ -335,7 +371,47 @@ _start:
     msr                SCTLR_EL1, x0
 
     isb                sy
-    ret
+
+    //update stack pointer
+    ldr                x0, =.L_KERNEL_BASE
+    ldr                x1, =.L_STACK_MMIO_L1_INDEX
+    lsl                x1, x1, #(9+9+12)
+
+    ldr                x2, =.PERIPHERAL_START
+    get_level2_index   x2, x2
+    sub                x2, x2, #1
+    lsl                x2, x2, #(9+12)
+
+    mov                x3, #510        //the kernel stack from higher L3[510], the double stack starts from higher L3[511], we actually have the last entry empty, since the stack grows downward. 
+    lsl                x3, x3, #12
+
+    orr                 x0, x0, x1
+    orr                 x0, x0, x2
+    orr                 x0, x0, x3
+
+    mov                sp, x0
+
+
+
+    adr_link            x0, .L_higher_half   
+    br                  x0
+
+
+.L_higher_half:
+    //we are in the higher half
+
+    adr_load            x2, .L_prepare_boot_info
+    blr                 x2
+    mov                 x3, x0  //x0 is used in adr_link, save it in other register
+
+    adr_load            x2, kernel_main   
+    mov                 x0, x3
+    ldr                 x0, KERNAL_BASE
+    br                  x2
+
+
+
+
 
 // put address of the boot info in x0
 // Note that when you call this function
@@ -362,10 +438,27 @@ _start:
     stp         x3, x4, [sp, #16 * 3]
 
     //stack
-    adr_load    x1, initial_stack_bottom
-    adr_load    x2, initial_stack_top
-    sub         x3,  x1,  x0      
-    sub         x4,  x2,  x0
+    ldr                x0, =.L_KERNEL_BASE
+    ldr                x1, =.L_STACK_MMIO_L1_INDEX
+    lsl                x1, x1, #(9+9+12)
+
+    ldr                x2, =.PERIPHERAL_START
+    get_level2_index   x2, x2
+    sub                x2, x2, #1
+    lsl                x2, x2, #(9+12)
+
+    mov                x3, #510        
+    lsl                x3, x3, #12
+    orr                x1, x0, x1
+    orr                x1, x1, x2
+    orr                x1, x1, x3
+
+    adr_load    x3, initial_stack_bottom
+    adr_load    x4, initial_stack_top
+    sub         x5, x4, x3
+    sub         x2, x1, x5
+    sub         x3,  x3,  x0      
+    sub         x4,  x4,  x0
     stp         x1, x2, [sp, #16 * 4]
     stp         x3, x4, [sp, #16 * 5]
 
@@ -410,6 +503,8 @@ clear_memory_range:
     cmp         x0, x1
     b.ne        clear_memory_range
     ret
+
+
 
 
 .size	_start, . - _start

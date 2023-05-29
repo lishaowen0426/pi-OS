@@ -1,40 +1,49 @@
 use crate::{
-    bsp::{device_driver::utils::*, mmio::*, PERIPHERAL_BASE},
+    bsp::{device_driver::utils::*, mmio::*},
     cpu::nop,
+    memory::config,
 };
+const MINI_UART_OFFSET: usize = 0x0021_5000;
+const PHYSICAL_MINI_UART_START: usize = config::PHYSICAL_PERIPHERAL_START + MINI_UART_OFFSET;
+const VIRTUAL_MINI_UART_START: usize = config::VIRTUAL_PERIPHERAL_START + MINI_UART_OFFSET;
+const VIRTUAL_PHYSICAL_DIFF: usize = VIRTUAL_MINI_UART_START - PHYSICAL_MINI_UART_START;
+
+const AUX_ENABLES: usize = VIRTUAL_MINI_UART_START + 0x4;
+const AUX_MU_IO_REG: usize = VIRTUAL_MINI_UART_START + 0x40;
+const AUX_MU_IER_REG: usize = VIRTUAL_MINI_UART_START + 0x44;
+const AUX_MU_IIR_REG: usize = VIRTUAL_MINI_UART_START + 0x48;
+const AUX_MU_LCR_REG: usize = VIRTUAL_MINI_UART_START + 0x4c;
+const AUX_MU_MCR_REG: usize = VIRTUAL_MINI_UART_START + 0x50;
+const AUX_MU_LSR_REG: usize = VIRTUAL_MINI_UART_START + 0x54;
+const AUX_MU_CNTL_REG: usize = VIRTUAL_MINI_UART_START + 0x60;
+const AUX_MU_BAUD_REG: usize = VIRTUAL_MINI_UART_START + 0x68;
+
 fn mu_baud_reg(clock: u64, baud: u32) -> u32 {
     ((clock / (baud * 8) as u64) - 1) as u32
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn init_mini_uart() {
-    mmio_write(AUX_ENABLES, 1); // enable UART1
-    mmio_write(AUX_MU_IER_REG, 0);
-    mmio_write(AUX_MU_CNTL_REG, 0);
-    mmio_write(AUX_MU_LCR_REG, 3); // 8 bits
-    mmio_write(AUX_MU_MCR_REG, 0);
-    mmio_write(AUX_MU_IER_REG, 0);
-    mmio_write(AUX_MU_IIR_REG, 0xC6); // disable interrupts
-    mmio_write(AUX_MU_BAUD_REG, mu_baud_reg(CLOCK, BAUD_RATE));
-    mmio_write(AUX_MU_CNTL_REG, 3); // enable RX/TX
-                                    //
-                                    // self.clear_rx();
+    mmio_write(AUX_ENABLES - VIRTUAL_PHYSICAL_DIFF, 1); // enable UART1
+    mmio_write(AUX_MU_IER_REG - VIRTUAL_PHYSICAL_DIFF, 0);
+    mmio_write(AUX_MU_CNTL_REG - VIRTUAL_PHYSICAL_DIFF, 0);
+    mmio_write(AUX_MU_LCR_REG - VIRTUAL_PHYSICAL_DIFF, 3); // 8 bits
+    mmio_write(AUX_MU_MCR_REG - VIRTUAL_PHYSICAL_DIFF, 0);
+    mmio_write(AUX_MU_IER_REG - VIRTUAL_PHYSICAL_DIFF, 0);
+    mmio_write(AUX_MU_IIR_REG - VIRTUAL_PHYSICAL_DIFF, 0xC6); // disable interrupts
+    mmio_write(
+        AUX_MU_BAUD_REG - VIRTUAL_PHYSICAL_DIFF,
+        mu_baud_reg(CLOCK, BAUD_RATE),
+    );
+    mmio_write(AUX_MU_CNTL_REG - VIRTUAL_PHYSICAL_DIFF, 3); // enable RX/TX
+                                                            //
+                                                            // self.clear_rx();
     return;
 }
 
 use core::cell::SyncUnsafeCell;
 
 use core::fmt;
-
-const AUX_ENABLES: usize = MINI_UART_START + 0x4;
-const AUX_MU_IO_REG: usize = MINI_UART_START + 0x40;
-const AUX_MU_IER_REG: usize = MINI_UART_START + 0x44;
-const AUX_MU_IIR_REG: usize = MINI_UART_START + 0x48;
-const AUX_MU_LCR_REG: usize = MINI_UART_START + 0x4c;
-const AUX_MU_MCR_REG: usize = MINI_UART_START + 0x50;
-const AUX_MU_LSR_REG: usize = MINI_UART_START + 0x54;
-const AUX_MU_CNTL_REG: usize = MINI_UART_START + 0x60;
-const AUX_MU_BAUD_REG: usize = MINI_UART_START + 0x68;
 
 const CLOCK: u64 = 500000000;
 const BAUD_RATE: u32 = 115200;

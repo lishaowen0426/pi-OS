@@ -67,6 +67,15 @@ pub mod config {
 
     pub const NUMBER_OF_FRAMES: usize = (PHYSICAL_MEMORY_END_INCLUSIVE >> SHIFT_4K) + 1;
     pub const NUMBER_OF_PAGES: usize = (0xFFFF_FFFF_FFFF >> SHIFT_4K) + 1;
+
+    const fn get_level2_index(va: usize) -> usize {
+        (va >> L2_INDEX_SHIFT) & INDEX_MASK
+    }
+
+    pub const PHYSICAL_PERIPHERAL_START: usize = 0xFE00_0000;
+    pub const VIRTUAL_PERIPHERAL_START: usize = KERNEL_OFFSET
+        | (STACK_MMIO_L1_INDEX << L1_INDEX_SHIFT)
+        | (get_level2_index(PHYSICAL_PERIPHERAL_START)) << L2_INDEX_SHIFT;
 }
 
 #[cfg(test)]

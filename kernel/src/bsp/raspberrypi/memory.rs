@@ -24,11 +24,9 @@
 //! |                                       |
 
 use crate::memory::config;
-pub const PERIPHERAL_BASE: usize =
-    config::KERNEL_OFFSET | (config::STACK_MMIO_L1_INDEX << config::L1_INDEX_SHIFT);
+
 const GPIO_OFFSET: usize = 0x0020_0000;
 const UART_OFFSET: usize = 0x0020_1000;
-const MINI_UART_OFFSET: usize = 0x0021_5000;
 
 #[cfg(feature = "bsp_rpi3")]
 pub mod mmio {
@@ -37,7 +35,6 @@ pub mod mmio {
     pub const PERIPHERAL_START: usize = 0x3F00_0000;
     pub const GPIO_START: usize = PERIPHERAL_START + GPIO_OFFSET;
     pub const UART_START: usize = PERIPHERAL_START + UART_OFFSET;
-    pub const MINI_UART_START: usize = PERIPHERAL_START + MINI_UART_OFFSET;
 }
 
 #[cfg(feature = "bsp_rpi4")]
@@ -47,5 +44,4 @@ pub mod mmio {
     pub const PERIPHERAL_START: usize = 0xFE00_0000;
     pub const GPIO_START: usize = PERIPHERAL_START + GPIO_OFFSET;
     pub const UART_START: usize = PERIPHERAL_START + UART_OFFSET;
-    pub const MINI_UART_START: usize = PERIPHERAL_START + MINI_UART_OFFSET;
 }
