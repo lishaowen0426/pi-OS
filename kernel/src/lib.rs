@@ -72,7 +72,6 @@ pub unsafe fn kernel_main(x0: u64) -> ! {
     println!("Trying to trigger an exception..");
     let km_higher_addr = &__kernel_main as *const _ as usize;
     println!("km_higher_addr = {:#018x}", km_higher_addr);
-
     let km = unsafe { core::mem::transmute::<usize, fn() -> !>(km_higher_addr) };
     // MMU.get()
     // .unwrap()
