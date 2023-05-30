@@ -56,7 +56,7 @@ extern "C" {
 
 use aarch64_cpu::registers::*;
 use boot_const::*;
-use core::fmt;
+use core::{arch::asm, fmt};
 use cpu::registers::*;
 use memory::*;
 use tock_registers::interfaces::{ReadWriteable, Readable};
@@ -70,8 +70,8 @@ pub struct BootInfo {
     peripheral: Mapped,
 
     free_frame: PaRange,
-    higher_free_page: VaRange,
     lower_free_page: VaRange,
+    higher_free_page: VaRange,
 }
 
 impl fmt::Display for BootInfo {
@@ -100,30 +100,35 @@ impl fmt::Debug for BootInfo {
 
 #[cfg(not(test))]
 #[no_mangle]
-// pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
-pub unsafe fn kernel_main(x0: u64) -> ! {
+pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
+    // pub unsafe fn kernel_main(x0: u64) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
     memory::init().unwrap();
-    println!(" bootinfo:\n{:#018x}", STACK_TOP_VIRTUAL);
+    println!(" bootinf:\n{}", boot_info);
+    // println!("\nx0 = {:#018x}", x0);
+    println!(" l1 = {:#018x}", config::LOWER_L1_VIRTUAL_ADDRESS);
+    // let l1 = config::LOWER_L1_VIRTUAL_ADDRESS as *mut u64;
+    let l1 = 0x0000000000088000 as *mut u64;
+    unsafe {
+        println!("l1[0] = {:#066b}", *l1.offset(0));
+    }
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 
     println!("Trying to trigger an exception..");
-    let km_higher_addr = &__kernel_main as *const _ as usize;
-    println!("km_higher_addr = {:#018x}", km_higher_addr);
-    let km = unsafe { core::mem::transmute::<usize, fn() -> !>(km_higher_addr) };
-    // MMU.get()
-    // .unwrap()
-    // .translate(VirtualAddress::from(0xffff << 48))
-    // .unwrap();
+    let stp = &initial_stack_top as *const _ as u64;
+    println!("initial_stack_top = {:#018x}", stp);
+    let stp_load = stp - KERNAL_BASE;
+    println!("initia_stack_top_physical = {:#018x}", stp_load);
     unsafe {
-        memory::MMU
-            .get()
-            .unwrap()
-            .translate(VirtualAddress::from(km_higher_addr))
-            .unwrap();
+        // core::ptr::write_volatile(0x8e008 as *mut u8, 42);
+        // core::ptr::write_volatile(0x200000 as *mut u8, 42);
+        asm!("DSB SY", "TLBI VMALLE1", "DSB sy", "ISB sy",);
+        core::ptr::write_volatile(0x40000000 as *mut u8, 42);
     }
+
+    println!("after");
 
     loop {}
 }

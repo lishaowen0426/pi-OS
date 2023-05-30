@@ -2,6 +2,7 @@ macro_rules! export_constants {
 ($($ident:ident = $expr: expr),*$(,)*) => {
     $(
         #[no_mangle]
+        #[link_section = ".text._start_arguments"]
         pub static $ident:u64 = $expr;
     )*
 };

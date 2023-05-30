@@ -40,24 +40,28 @@
 .endm
 
 .macro get_level1_index dest, src
-    mov \dest, \src, LSR .L1_SHIFT
-    and \dest, \dest, .INDEX_MASK
+    mov \dest, \src, LSR .L_L1_SHIFT
+    and \dest, \dest, .L_INDEX_MASK
 .endm
 
 .macro get_level2_index dest, src
-    mov \dest, \src, LSR .L2_SHIFT
-    and \dest, \dest, .INDEX_MASK
+    mov \dest, \src, LSR .L_L2_SHIFT
+    and \dest, \dest, .L_INDEX_MASK
 .endm
 
 .macro get_level3_index dest, src
-    mov \dest, \src, LSR .L3_SHIFT
-    and \dest, \dest, .INDEX_MASK
+    mov \dest, \src, LSR .L_L3_SHIFT
+    and \dest, \dest, .L_INDEX_MASK
 .endm
 
 
+.equ .L_KERNEL_BASE, 0xFFFFFF8000000000
 
 
-
+.macro get_rust_const_load dest symbol
+    adr_load    \dest   \symbol
+    ldr    \dest, [\dest]
+.endm
 
 
 
@@ -69,15 +73,16 @@
 .global	_start
 _start:
     mrs         x0, CurrentEL
-    cmp         x0, .L_CONST_EL2
+    ldr         x1, =.L_CONST_EL2
+    cmp         x0, x1
     b.ne        .L_parking_loop
 
     mrs         x1, MPIDR_EL1
-    and         x1, x1, .L_CONST_CORE_ID_MASK
-    ldr         x2, BOOT_CORE_ID
-    cmp         x1, x2
+    ldr         x2, =.L_CONST_CORE_ID_MASK
+    and         x1, x1, x2
+    ldr         x3, =.L_BOOT_CORE_ID
+    cmp         x1, x3
     b.ne        .L_parking_loop
-
 
 
 
@@ -88,38 +93,18 @@ _start:
     adr_load    x1, __bss_end_exclusive
     bl          clear_memory_range
 
-    adr_load    x0, l1_lower_page_table
-    add         x1, x0, #4096 
+    adr_load    x0, __page_table_start
+    adr_load    x1, __page_table_end_exclusive
     bl          clear_memory_range
-
-    adr_load    x0, l1_higher_page_table
-    add         x1, x0, #4096 
-    bl          clear_memory_range
-
-    adr_load    x0, l2_lower_page_table
-    add         x1, x0, #4096
-    bl          clear_memory_range
-
-    adr_load    x0, l2_higher_page_table
-    add         x1, x0, #4096
-    bl          clear_memory_range
-
-    adr_load    x0, l3_lower_page_table
-    add         x1, x0, #4096
-    bl          clear_memory_range
-
-
-    adr_load    x0, l3_higher_page_table
-    add         x1, x0, #4096
-    bl          clear_memory_range
-
-.L_prepare_rust:
-
 
     bl init_mini_uart
 
+
+    bl .L_mini_print
     bl .L_map_lower_half
+    bl .L_mini_print
     bl .L_map_higher_half
+    bl .L_mini_print
     b  .L_enable_paging
 
 
@@ -140,69 +125,52 @@ _start:
     //fill in the recursive entry
     //L1[511] = L1
     adr_load            x1, l1_lower_page_table
-    ldr                 x2, =.TABLE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
-    ldr                 x2, =.RECURSIVE_INDEX
+    ldr                 x2, =.L_RECURSIVE_INDEX
+    adr_load            x0, l1_lower_page_table
     str                 x1, [x0, x2, LSL #3]      
 
     //L1[0] = lower L2
     adr_load            x1, l2_lower_page_table
-    ldr                 x2, =.TABLE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
     str                 x1, [x0, xzr, LSL #3]      
 
     //lower L2[0] = L3
     adr_load            x1, l3_lower_page_table
-    ldr                 x2, =.TABLE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
     adr_load            x3, l2_lower_page_table
     str                 x1, [x3, xzr, LSL #3]      
 
-    //L1[3] = higher L2 /*PI4 peripheral starts at 0xFE00_0000*/
-    adr_load            x1, l2_higher_page_table
-    ldr                 x2, =.TABLE_ATTR
-    make_table_entry    x1, x1, x2
-    ldr                 x3, =.PERIPHERAL_START
-    get_level1_index    x4, x3
-    str                 x1, [x0, x4, LSL #3]      
+
 
     //update L3 according to memory type
+    //stack and peripheral will be mapped in the higher half
     
-    //boot stack
-    adr_load            x0, l3_lower_page_table
-    adr_load            x1, initial_stack_bottom
-    adr_load            x2, initial_double_stack_top
-    ldr                 x3, =.RWNORMAL
-
-    bl .L_fill_l3_table
-
 
     //code + rodata
     adr_load            x0, l3_lower_page_table
     adr_load            x1, __code_start
     adr_load            x2, __data_end_exclusive
-    ldr                 x3, =.XNORMAL
-
+    ldr                 x3, =.L_XNORMAL
     bl .L_fill_l3_table
     
     //bss    
     adr_load            x0, l3_lower_page_table
     adr_load            x1, __bss_start
-    adr_load            x2, __bss_end_exclusive
-    ldr                 x3, =.RWNORMAL
-
+    //adr_load            x2, __bss_end_exclusive
+    adr_load            x2, __page_table_end_exclusive
+    ldr                 x3, =.L_RWNORMAL
     bl .L_fill_l3_table
 
-
-
-    //peripheral
-    adr_load            x0, l2_higher_page_table
-    ldr                 x1, =.PERIPHERAL_START
-    ldr                 x2, =.PERIPHERAL_END
-    ldr                 x3, =.RWDEVICE
-
-    bl .L_fill_l2_table
-
+    //stack    
+    adr_load            x0, l3_lower_page_table
+    adr_load            x1, initial_stack_bottom
+    adr_load            x2, initial_double_stack_top
+    ldr                 x3, =.L_RWNORMAL
+    bl .L_fill_l3_table
 
     mov lr, x6
     ret
@@ -247,16 +215,16 @@ _start:
 
 
 .L_el2_to_el1:
-    ldr                 x0, =.CNTHCTL_EL2_val
+    ldr                 x0, =.L_CNTHCTL_EL2_val
     msr                 CNTHCTL_EL2, x0
 
-    ldr                 x0, =.CNTVOFF_EL2_val
+    ldr                 x0, =.L_CNTVOFF_EL2_val
     msr                 CNTVOFF_EL2, x0
 
-    ldr                 x0, =.HCR_EL2_val 
+    ldr                 x0, =.L_HCR_EL2_val 
     msr                 HCR_EL2, x0
 
-    ldr                 x0, =.SPSR_EL2_val //all interrupts are masked
+    ldr                 x0, =.L_SPSR_EL2_val //all interrupts are masked
     msr                 SPSR_EL2, x0
 
     adr_load            x0, .L_in_el1 
@@ -280,34 +248,34 @@ _start:
     //fill in the recursive entry
     //higher L1[511] = L1
     adr_load            x1, l1_higher_page_table
-    ldr                 x2, =.TABLE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
-    ldr                 x2, =.RECURSIVE_INDEX
+    ldr                 x2, =.L_RECURSIVE_INDEX
     str                 x1, [x0, x2, LSL #3]      
 
     //higher L1[0] = lower L2, lower l2[0] = lower l3
     adr_load            x1, l2_lower_page_table
-    ldr                 x2, =.TABLE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
     str                 x1, [x0, xzr, LSL #3]      
 
 
 
-    //higher L1[STACK_MMIO_L1_INDEX(510)] = higher L2 /*PI4 peripheral at higher L2[496 - 511]*/
+    //higher L1[STACK_MMIO_L1_INDEX(510)] = higher L2 
     adr_load            x1, l2_higher_page_table
-    ldr                 x2, =.TABLE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
-    ldr                 x3, =.L_STACK_MMIO_L1_INDEX
+    ldr                 x3, =.L_STACK_PERIPHERAL_L1_INDEX
     str                 x1, [x0, x3, LSL #3]      
 
     //fill higher l2 with MMIO
     adr_load            x0, l2_higher_page_table
-    ldr                 x1, =.PERIPHERAL_START
-    ldr                 x2, =.PERIPHERAL_END
-    ldr                 x3, =.PERIPHERAL_START
+    ldr                 x1, =.L_PERIPHERAL_PHYSICAL_START
+    ldr                 x2, =.L_PERIPHERAL_PHYSICAL_END
+    ldr                 x3, =.L_PERIPHERAL_PHYSICAL_START
     get_level2_index    x1, x1
     get_level2_index    x2, x2   //should be  496 - 511
-    ldr                 x4, =.RWDEVICE
+    ldr                 x4, =.L_RWDEVICE
 1:
     make_block_entry    x5, x3, x4
     str                 x5, [x0, x1, LSL #3]
@@ -320,20 +288,19 @@ _start:
     //higher l2[495] = higher l3 
     adr_load            x0, l2_higher_page_table
     adr_load            x1, l3_higher_page_table
-    ldr                 x2, =.PERIPHERAL_START
-    get_level2_index    x2, x2
-    sub                 x2, x2, #1
-    ldr                 x3, =.TABLE_ATTR
+    ldr                 x2, =.L_STACK_L2_INDEX
+    ldr                 x3, =.L_TABLE_ATTR
     make_table_entry    x4, x1, x3
     str                 x4, [x0, x2, LSL #3]
 
 
-    //fill higher l3 with stack, the double stack top starts from higher L3[511]
+
+    //fill higher l3 with double stack + stack
     adr_load           x0, l3_higher_page_table
     adr_load           x1, initial_double_stack_top
     adr_load           x2, initial_stack_bottom
-    mov                x3, #511
-    ldr                x4, =.RWNORMAL
+    ldr                x3, =.L_DOUBLE_STACK_TOP_L3_INDEX
+    ldr                x4, =.L_RWNORMAL
 
 2:
     make_page_entry    x5, x1, x4
@@ -342,7 +309,6 @@ _start:
     sub                x3,  x3, #1
     cmp                x1,   x2
     b.gt               2b 
-    
 
 
 
@@ -352,45 +318,34 @@ _start:
 
     
 .L_enable_paging:
+    bl .L_mini_print
     adr_load           x0, l1_lower_page_table 
     msr                ttbr0_el1, x0
     
+    bl .L_mini_print
 
     adr_load           x0, l1_higher_page_table 
     msr                ttbr1_el1, x0
 
-    ldr                x0, =.TCR_EL1_val
+    bl .L_mini_print
+    ldr                x0, =.L_TCR_EL1_val
     msr                TCR_EL1, x0
 
+    bl .L_mini_print
 
-    ldr                x0, =.MAIR_EL1_val
+    ldr                x0, =.L_MAIR_EL1_val
     msr                MAIR_EL1, x0
 
+    bl .L_mini_print
 
-    ldr                x0, =.SCTLR_EL1_val
+    ldr                x0, =.L_SCTLR_EL1_val
     msr                SCTLR_EL1, x0
 
     isb                sy
 
-    //update stack pointer
-    ldr                x0, =.L_KERNEL_BASE
-    ldr                x1, =.L_STACK_MMIO_L1_INDEX
-    lsl                x1, x1, #(9+9+12)
 
-    ldr                x2, =.PERIPHERAL_START
-    get_level2_index   x2, x2
-    sub                x2, x2, #1
-    lsl                x2, x2, #(9+12)
-
-    mov                x3, #510        //the kernel stack from higher L3[510], the double stack starts from higher L3[511], we actually have the last entry empty, since the stack grows downward. 
-    lsl                x3, x3, #12
-
-    orr                 x0, x0, x1
-    orr                 x0, x0, x2
-    orr                 x0, x0, x3
-
+    ldr                x0, =.L_STACK_TOP_VIRTUAL
     mov                sp, x0
-
 
 
     adr_link            x0, .L_higher_half   
@@ -399,18 +354,29 @@ _start:
 
 .L_higher_half:
     //we are in the higher half
+    //DONOT use adr_link anymore, as it is based on lower half + kernel_base
 
-    adr_load            x2, .L_prepare_boot_info
-    blr                 x2
-    mov                 x3, x0  //x0 is used in adr_link, save it in other register
+    bl                 .L_unmapped_lower               
+    bl .L_virtual_mini_print
 
-    adr_load            x2, kernel_main   
-    mov                 x0, x3
-    ldr                 x0, KERNAL_BASE
-    br                  x2
+    bl                  .L_prepare_boot_info
 
+    b                  kernel_main
 
 
+.L_unmapped_lower:
+   ldr                  x0, =.L_LOWER_L1_VIRTUAL_ADDR 
+   make_invalid_entry   x1
+   str                  x1, [x0, xzr, LSL #3]
+
+   DSB SY 
+   TLBI VMALLE1 
+   DSB sy
+   str                  x1, [x0, xzr, LSL #3]
+   DSB sy
+   ISB sy
+
+   ret
 
 
 // put address of the boot info in x0
@@ -438,25 +404,11 @@ _start:
     stp         x3, x4, [sp, #16 * 3]
 
     //stack
-    ldr                x0, =.L_KERNEL_BASE
-    ldr                x1, =.L_STACK_MMIO_L1_INDEX
-    lsl                x1, x1, #(9+9+12)
-
-    ldr                x2, =.PERIPHERAL_START
-    get_level2_index   x2, x2
-    sub                x2, x2, #1
-    lsl                x2, x2, #(9+12)
-
-    mov                x3, #510        
-    lsl                x3, x3, #12
-    orr                x1, x0, x1
-    orr                x1, x1, x2
-    orr                x1, x1, x3
-
+    ldr         x2, =.L_STACK_TOP_VIRTUAL
     adr_load    x3, initial_stack_bottom
     adr_load    x4, initial_stack_top
     sub         x5, x4, x3
-    sub         x2, x1, x5
+    sub         x1, x2, x5  //x1 holds stack bottom
     sub         x3,  x3,  x0      
     sub         x4,  x4,  x0
     stp         x1, x2, [sp, #16 * 4]
@@ -464,21 +416,31 @@ _start:
 
     //peripheral
     
-    ldr         x1,  =.PERIPHERAL_START
-    ldr         x2,  =.PERIPHERAL_END
+    ldr         x1,  =.L_PERIPHERAL_VIRTUAL_START
+    ldr         x2,  =.L_PERIPHERAL_VIRTUAL_END
+    ldr         x3,  =.L_PERIPHERAL_PHYSICAL_START
+    ldr         x4,  =.L_PERIPHERAL_PHYSICAL_END
     stp         x1, x2, [sp, #16 * 6]
-    stp         x1, x2, [sp, #16 * 7]
+    stp         x3, x4, [sp, #16 * 7]
 
-/*
+
     //free frame
-    adr_load    x1, initial_stack_top
+    ldr     x0, =.L_KERNEL_BASE
+    adr_load    x1,  initial_double_stack_top
     sub         x1,  x1,  x0      
-    adr_load    x2, .PERIPHERAL_START
-    sub         x2,  x2,  x0      
+    ldr         x2,  =.L_PERIPHERAL_PHYSICAL_START
     stp         x1, x2, [sp, #16 * 8]
-    */
+
+    //lower free page
+    ldr     x1, =.L_LOWER_VIRTUAL_START
+    ldr     x2, =.L_LOWER_VIRTUAL_END_EXCLUSIVE
+    stp     x1, x2, [sp, #16 * 9]
     
 
+    //higher free page
+    ldr     x1, =.L_HIGHER_VIRTUAL_START
+    ldr     x2, =.L_HIGHER_VIRTUAL_END_EXCLUSIVE
+    stp     x1, x2, [sp, #16 * 10]
 
 
     mov         x0, sp
@@ -490,11 +452,21 @@ _start:
 
 .L_qemu_print:
     ldr         x0, =.L_QEMU_CONSOLE
-    mov         x1, #0b1000111
+    mov         x1, #0b1000001
     str         x1, [x0]
     ret
 
+.L_mini_print:
+    ldr   x0, =.L_PHYSICAL_MINI_UART
+    mov   x1, #0b1000001
+    str  x1, [x0]
+    ret
 
+.L_virtual_mini_print:
+    ldr   x0, =.L_VIRTUAL_MINI_UART
+    mov   x1, #0b1000010
+    str  x1, [x0]
+    ret
 //x0 start address
 //x1 end exclusive
 .global clear_memory_range
@@ -539,7 +511,7 @@ initial_stack_guard_page:
     .space 4096, 0
 .global initial_stack_bottom
 initial_stack_bottom:
-    .space 4096 * .INITIAL_STACK_SIZE, 0
+    .space 4096 * .L_INITIAL_STACK_SIZE, 0
 .global initial_stack_top
 initial_stack_top:
     .space 4096, 0

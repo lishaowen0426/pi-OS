@@ -242,7 +242,7 @@ readelf_asm: $(ASSEMBLED_BOOT)
 ##------------------------------------------------------------------------------
 objdump: $(KERNEL_ELF)
 	$(call color_header, "Launching objdump")
-	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY)  -h  $(KERNEL_ELF)
+	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY)  -d   $(KERNEL_ELF)
 
 
 #objdump: $(KERNEL_ELF)
