@@ -29,6 +29,11 @@
     orr \dest, \dest, #0b11
 .endm
 
+.macro make_recursive_entry  dest, src,  memory_type
+    orr \dest, \src,  \memory_type
+    orr \dest, \dest, #0b11
+.endm
+
 .macro make_block_entry  dest, src,  memory_type
     orr \dest, \src,  \memory_type
     orr \dest, \dest, #0b01
@@ -100,11 +105,8 @@ _start:
     bl init_mini_uart
 
 
-    bl .L_mini_print
     bl .L_map_lower_half
-    bl .L_mini_print
     bl .L_map_higher_half
-    bl .L_mini_print
     b  .L_enable_paging
 
 
@@ -125,8 +127,8 @@ _start:
     //fill in the recursive entry
     //L1[511] = L1
     adr_load            x1, l1_lower_page_table
-    ldr                 x2, =.L_TABLE_ATTR
-    make_table_entry    x1, x1, x2
+    ldr                 x2, =.L_RECURSIVE_ATTR
+    make_recursive_entry    x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
     adr_load            x0, l1_lower_page_table
     str                 x1, [x0, x2, LSL #3]      
@@ -160,17 +162,10 @@ _start:
     //bss    
     adr_load            x0, l3_lower_page_table
     adr_load            x1, __bss_start
-    //adr_load            x2, __bss_end_exclusive
-    adr_load            x2, __page_table_end_exclusive
+    adr_load            x2, __bss_end_exclusive
     ldr                 x3, =.L_RWNORMAL
     bl .L_fill_l3_table
 
-    //stack    
-    adr_load            x0, l3_lower_page_table
-    adr_load            x1, initial_stack_bottom
-    adr_load            x2, initial_double_stack_top
-    ldr                 x3, =.L_RWNORMAL
-    bl .L_fill_l3_table
 
     mov lr, x6
     ret
@@ -230,8 +225,10 @@ _start:
     adr_load            x0, .L_in_el1 
     msr                 ELR_EL2, x0
 
+    ldr                 x1, =.L_KERNEL_BASE
     adr_load            x0, __exception_vector_start
-    msr                 VBAR_EL1, x0
+    add                 x0, x0, x1
+    msr                 VBAR_EL1, x0  //exception vector needs to be virtual
 
     adr_load            x0, initial_stack_top 
     msr                 SP_EL1, x0
@@ -248,8 +245,8 @@ _start:
     //fill in the recursive entry
     //higher L1[511] = L1
     adr_load            x1, l1_higher_page_table
-    ldr                 x2, =.L_TABLE_ATTR
-    make_table_entry    x1, x1, x2
+    ldr                 x2, =.L_RECURSIVE_ATTR
+    make_recursive_entry  x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
     str                 x1, [x0, x2, LSL #3]      
 
@@ -318,25 +315,20 @@ _start:
 
     
 .L_enable_paging:
-    bl .L_mini_print
     adr_load           x0, l1_lower_page_table 
     msr                ttbr0_el1, x0
     
-    bl .L_mini_print
 
     adr_load           x0, l1_higher_page_table 
     msr                ttbr1_el1, x0
 
-    bl .L_mini_print
     ldr                x0, =.L_TCR_EL1_val
     msr                TCR_EL1, x0
 
-    bl .L_mini_print
 
     ldr                x0, =.L_MAIR_EL1_val
     msr                MAIR_EL1, x0
 
-    bl .L_mini_print
 
     ldr                x0, =.L_SCTLR_EL1_val
     msr                SCTLR_EL1, x0
@@ -357,7 +349,6 @@ _start:
     //DONOT use adr_link anymore, as it is based on lower half + kernel_base
 
     bl                 .L_unmapped_lower               
-    bl .L_virtual_mini_print
 
     bl                  .L_prepare_boot_info
 
@@ -371,9 +362,7 @@ _start:
 
    DSB SY 
    TLBI VMALLE1 
-   DSB sy
-   str                  x1, [x0, xzr, LSL #3]
-   DSB sy
+   DSB SY
    ISB sy
 
    ret

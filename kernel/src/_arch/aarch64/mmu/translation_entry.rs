@@ -662,6 +662,23 @@ impl Descriptor {
             _ => Err(EINVAL),
         }
     }
+    const fn Table_Page_attr() -> u64 {
+        (0b0 << Self::NSTable) // if NSTable = 1, subsequent entries are treated as non-global,
+        // regardless of its nG bit.
+            | (0b01 << Self::APTable.start)
+            | (0b0 << Self::UXNTable)
+            | (0b0 << Self::PXNTable)
+            | (0b1 << Self::AF) // Accessed
+            |(0b1 << Self::AttrIndx.start) // Normal Memory
+            | (0b0 << Self::NS) // Alway secure
+            | (0b00 << Self::AP.start) //Read Write
+            | (0b11 << Self::SH.start) //Inner Shareable
+            | (0b1 << Self::AF) //Accessed
+            | (0b0 << Self::nG) //Always global
+            | (0b0 << Self::Contiguous) //Non contiguous
+            | (0b1 << Self::PXN) // Never Execute at EL1
+            | (0b1 << Self::UXN) // Never Execute at EL0
+    }
 
     pub fn set_invalid(&mut self) -> Result<(), ErrorCode> {
         *self = Self::INVALID;

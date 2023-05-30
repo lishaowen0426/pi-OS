@@ -108,27 +108,27 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     println!(" bootinf:\n{}", boot_info);
     // println!("\nx0 = {:#018x}", x0);
     println!(" l1 = {:#018x}", config::LOWER_L1_VIRTUAL_ADDRESS);
-    // let l1 = config::LOWER_L1_VIRTUAL_ADDRESS as *mut u64;
-    let l1 = 0x0000000000088000 as *mut u64;
+    let l1_va = config::LOWER_L1_VIRTUAL_ADDRESS as *mut u64;
     unsafe {
-        println!("l1[0] = {:#066b}", *l1.offset(0));
+        println!(" l1[0] = {:#066b}", *l1_va.offset(0));
+        //*l1_va = 0;
+        // println!(" l1[0] = {:#066b}", *l1.offset(0));
+        // println!("l1[511] = {:#066b}", *l1.offset(511));
     }
     let (_, el) = exception::current_privilege_level();
     println!("Current privilege level: {}", el);
 
     println!("Trying to trigger an exception..");
-    let stp = &initial_stack_top as *const _ as u64;
-    println!("initial_stack_top = {:#018x}", stp);
-    let stp_load = stp - KERNAL_BASE;
-    println!("initia_stack_top_physical = {:#018x}", stp_load);
     unsafe {
-        // core::ptr::write_volatile(0x8e008 as *mut u8, 42);
+        core::ptr::write_volatile(
+            ((config::KERNEL_OFFSET) | (510 << 30) | (495 << 21) | (509 << 12)) as *mut u8,
+            42,
+        );
         // core::ptr::write_volatile(0x200000 as *mut u8, 42);
-        asm!("DSB SY", "TLBI VMALLE1", "DSB sy", "ISB sy",);
-        core::ptr::write_volatile(0x40000000 as *mut u8, 42);
+        // core::ptr::write_volatile(0x40000000 as *mut u8, 42);
     }
 
-    println!("after");
+    println!("Passed!");
 
     loop {}
 }
