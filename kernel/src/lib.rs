@@ -42,24 +42,9 @@ mod panic_wait;
 mod print;
 mod synchronization;
 mod utils;
-extern "C" {
-    static __code_start: u8;
-    static __code_end_exclusive: u8;
-    static __bss_start: u8;
-    static __bss_end_exclusive: u8;
-    static __data_start: u8;
-    static __data_end_exclusive: u8;
-    static __kernel_main: u8;
-    static initial_stack_top: u8;
 
-}
-
-use aarch64_cpu::registers::*;
-use boot_const::*;
-use core::{arch::asm, fmt};
-use cpu::registers::*;
+use core::fmt;
 use memory::*;
-use tock_registers::interfaces::{ReadWriteable, Readable};
 
 // 32 bytes * 4 + 16 + 16 + 16
 #[repr(C)]
@@ -104,29 +89,8 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     // pub unsafe fn kernel_main(x0: u64) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
-    memory::init().unwrap();
-    println!(" bootinf:\n{}", boot_info);
-    // println!("\nx0 = {:#018x}", x0);
-    println!(" l1 = {:#018x}", config::LOWER_L1_VIRTUAL_ADDRESS);
-    let l1_va = config::LOWER_L1_VIRTUAL_ADDRESS as *mut u64;
-    unsafe {
-        println!(" l1[0] = {:#066b}", *l1_va.offset(0));
-        //*l1_va = 0;
-        // println!(" l1[0] = {:#066b}", *l1.offset(0));
-        // println!("l1[511] = {:#066b}", *l1.offset(511));
-    }
-    let (_, el) = exception::current_privilege_level();
-    println!("Current privilege level: {}", el);
-
-    println!("Trying to trigger an exception..");
-    unsafe {
-        core::ptr::write_volatile(
-            ((config::KERNEL_OFFSET) | (510 << 30) | (495 << 21) | (509 << 12)) as *mut u8,
-            42,
-        );
-        // core::ptr::write_volatile(0x200000 as *mut u8, 42);
-        // core::ptr::write_volatile(0x40000000 as *mut u8, 42);
-    }
+    memory::init(boot_info).unwrap();
+    println!("Boot info:\n{}", boot_info);
 
     println!("Passed!");
 

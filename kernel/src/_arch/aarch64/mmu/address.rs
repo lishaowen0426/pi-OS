@@ -1,5 +1,5 @@
 use super::config;
-use crate::{errno::*, println, utils::bitfields::Bitfields};
+use crate::{errno::*, utils::bitfields::Bitfields};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,

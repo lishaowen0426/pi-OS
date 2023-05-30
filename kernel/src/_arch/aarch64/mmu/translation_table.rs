@@ -1,5 +1,5 @@
 use super::{address::*, cache::*, config, frame_allocator::*, translation_entry::*, BlockSize};
-use crate::{bsp::mmio, errno::*, println, unsafe_print, unsafe_println};
+use crate::{errno::*, println, unsafe_println};
 use aarch64_cpu::{
     asm::barrier,
     registers::{TTBR0_EL1, TTBR1_EL1},

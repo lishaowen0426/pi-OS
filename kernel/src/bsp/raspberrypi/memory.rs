@@ -23,8 +23,6 @@
 //! | .got                                  |
 //! |                                       |
 
-use crate::memory::config;
-
 const GPIO_OFFSET: usize = 0x0020_0000;
 const UART_OFFSET: usize = 0x0020_1000;
 

@@ -2,9 +2,9 @@ use crate::{
     errno::{ErrorCode, EAGAIN},
     unsafe_println,
 };
-use aarch64_cpu::{asm::barrier, registers::*};
+use aarch64_cpu::{ registers::*};
 use spin::{mutex::SpinMutex, once::Once};
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{ Readable, Writeable};
 
 #[path = "mmu/address.rs"]
 pub mod address;
@@ -27,16 +27,9 @@ pub use translation_table::*;
 pub use address::*;
 use frame_allocator::*;
 
-extern "C" {
-    static __code_start: u8;
-    static __code_end_exclusive: u8;
-    static __bss_start: u8;
-    static __bss_end_exclusive: u8;
-    static __data_start: u8;
-    static __data_end_exclusive: u8;
-    static l1_lower_page_tabel: u8;
-    static l1_higher_page_tabel: u8;
-}
+use crate::BootInfo;
+
+
 
 fn config_registers_el1() -> Result<(), ErrorCode> {
         // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
@@ -97,30 +90,8 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
 
         
 
-pub fn init() -> Result<(), ErrorCode> {
-    /*
-    config_registers_el1()?;
-    /*
-    unsafe{
-        let l1_pa = PhysicalAddress::try_from(&__l1_page_table_start as * const _ as usize).unwrap();
-        set_ttbr0(l1_pa, 0);
-    }
-        */
+pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
 
-    // Enable the MMU and turn on data and instruction caching.
-
-    SCTLR_EL1.modify(
-        SCTLR_EL1::M::Enable
-        + SCTLR_EL1::C::Cacheable
-        + SCTLR_EL1::I::Cacheable
-        + SCTLR_EL1::WXN::Disable
-        + SCTLR_EL1::UCI::Trap, // Cache maintenance instruction at EL0 are not allowed
-    );
-
-    barrier::isb(barrier::SY);
-
-    unsafe_println!("SCTLR_EL1 = {:#066b}", SCTLR_EL1.get());
-    */
 
     
     MMU.call_once(|| {
