@@ -45,13 +45,13 @@ pub mod config {
     pub const L2_INDEX_SHIFT: usize = L3_INDEX_SHIFT + INDEX_BITS;
     pub const L1_INDEX_SHIFT: usize = L2_INDEX_SHIFT + INDEX_BITS;
 
-    pub const KERNEL_OFFSET: usize = 0xFFFFFF8000000000;
+    pub const KERNEL_BASE: usize = 0xFFFFFF8000000000;
 
     pub const RECURSIVE_L1_INDEX: usize = ENTRIES_PER_TABLE - 1;
     pub const LOWER_L1_VIRTUAL_ADDRESS: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L2_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L3_INDEX_SHIFT);
-    pub const HIGHER_L1_VIRTUAL_ADDRESS: usize = KERNEL_OFFSET
+    pub const HIGHER_L1_VIRTUAL_ADDRESS: usize = KERNEL_BASE
         | (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L2_INDEX_SHIFT)
         | (RECURSIVE_L1_INDEX << L3_INDEX_SHIFT);
@@ -73,7 +73,7 @@ pub mod config {
     }
 
     pub const PHYSICAL_PERIPHERAL_START: usize = 0xFE00_0000;
-    pub const VIRTUAL_PERIPHERAL_START: usize = KERNEL_OFFSET
+    pub const VIRTUAL_PERIPHERAL_START: usize = KERNEL_BASE
         | (STACK_MMIO_L1_INDEX << L1_INDEX_SHIFT)
         | (get_level2_index(PHYSICAL_PERIPHERAL_START)) << L2_INDEX_SHIFT;
 }

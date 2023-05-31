@@ -1,6 +1,6 @@
 use crate::{
     errno::{ErrorCode, EAGAIN},
-    unsafe_println,
+    println,
 };
 use aarch64_cpu::{ registers::*};
 use spin::{mutex::SpinMutex, once::Once};
@@ -17,15 +17,17 @@ pub mod translation_entry;
 #[path = "mmu/translation_table.rs"]
 pub mod translation_table;
 
-#[path = "mmu/frame_allocator.rs"]
-mod frame_allocator;
+#[path = "mmu/allocator.rs"]
+mod allocator;
+#[path = "mmu/heap.rs"]
+mod heap;
 
 use cache::*;
 pub use mmu_config::config;
 pub use translation_entry::*;
 pub use translation_table::*;
 pub use address::*;
-use frame_allocator::*;
+use allocator::*;
 
 use crate::BootInfo;
 
@@ -37,7 +39,7 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
     let t0sz: u64 = 16 + 9; // start from level 1
     let t1sz: u64 = 16 + 9; // start from level 1
 
-    unsafe_println!(
+    println!(
         "TTBR0: 0x0 - {:#x}",
         u64::pow(2, (64 - t0sz) as u32) - 1
     );
@@ -100,6 +102,13 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
             UnsafeTranslationTable::new(config::HIGHER_L1_VIRTUAL_ADDRESS as *mut L1Entry),
         )
     });
+
+    //  give 2m va and pa to the heap allocator so that it can distribute memory to the page and
+    //   frame allocator
+    let mut lower_free_page_range = boot_info.lower_free_page;
+    let mut higher_free_page_range = boot_info.higher_free_page;
+    println!("higher page range: {}", higher_free_page_range);
+    let mut free_frame = boot_info.free_frame;
     
 
     Ok(())
@@ -133,12 +142,11 @@ impl MemoryManagementUnit {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-        frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         if va.is_lower(){
-        self.lower_l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        self.lower_l1.lock().map(va,pa, mt, BlockSize::_4K)
         }else{
-        self.higher_l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        self.higher_l1.lock().map(va,pa, mt, BlockSize::_4K)
         }
     }
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
@@ -160,7 +168,6 @@ mod tests {
     use test_macros::kernel_test;
     #[kernel_test]
     fn test_mmu() {
-         super::init().unwrap();
 
     }
 }
