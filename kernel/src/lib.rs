@@ -42,59 +42,44 @@ mod panic_wait;
 mod print;
 mod synchronization;
 mod utils;
-extern "C" {
-    static __code_start: u8;
-    static __code_end_exclusive: u8;
-    static __bss_start: u8;
-    static __bss_end_exclusive: u8;
-    static __data_start: u8;
-    static __data_end_exclusive: u8;
-    static __kernel_main: u8;
-    static initial_stack_top: u8;
 
-}
-
-use aarch64_cpu::registers::*;
-use boot_const::*;
-use core::{arch::asm, fmt};
-use cpu::registers::*;
+use aarch64_cpu::{asm, registers::*};
+use core::fmt;
 use memory::*;
-use tock_registers::interfaces::{ReadWriteable, Readable};
-
+use tock_registers::interfaces::Writeable;
 // 32 bytes * 4 + 16 + 16 + 16
 #[repr(C)]
 pub struct BootInfo {
-    code_and_ro: Mapped,
-    bss: Mapped,
-    stack: Mapped,
-    peripheral: Mapped,
-
-    free_frame: PaRange,
-    lower_free_page: VaRange,
-    higher_free_page: VaRange,
+    pub code_and_ro: Mapped,
+    pub bss: Mapped,
+    pub stack: Mapped,
+    pub peripheral: Mapped,
+    pub free_frame: PaRange,
+    pub lower_free_page: VaRange,
+    pub higher_free_page: VaRange,
 }
 
 impl fmt::Display for BootInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "code and ro: {}", self.code_and_ro)?;
-        writeln!(f, "bss : {}", self.bss)?;
-        writeln!(f, "stack: {}", self.stack)?;
-        writeln!(f, "peripheral: {}", self.peripheral)?;
-        writeln!(f, "free frame: {}", self.free_frame)?;
-        writeln!(f, "lower free page: {}", self.lower_free_page)?;
-        write!(f, "higher free page: {}", self.higher_free_page)
+        writeln!(f, "    code and ro:       {}", self.code_and_ro)?;
+        writeln!(f, "    bss :              {}", self.bss)?;
+        writeln!(f, "    stack:             {}", self.stack)?;
+        writeln!(f, "    peripheral:        {}", self.peripheral)?;
+        writeln!(f, "    free frame:        {}", self.free_frame)?;
+        writeln!(f, "    lower free page:   {}", self.lower_free_page)?;
+        write!(f, "    higher free page:  {}", self.higher_free_page)
     }
 }
 
 impl fmt::Debug for BootInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "code and ro: {:?}", self.code_and_ro)?;
-        writeln!(f, "bss : {:?}", self.bss)?;
-        writeln!(f, "stack: {:?}", self.stack)?;
-        writeln!(f, "peripheral: {:?}", self.peripheral)?;
-        writeln!(f, "free frame: {:?}", self.free_frame)?;
-        writeln!(f, "lower free page: {:?}", self.lower_free_page)?;
-        write!(f, "higher free page: {:?}", self.higher_free_page)
+        writeln!(f, "    code and ro:       {:?}", self.code_and_ro)?;
+        writeln!(f, "    bss :              {:?}", self.bss)?;
+        writeln!(f, "    stack:             {:?}", self.stack)?;
+        writeln!(f, "    peripheral:        {:?}", self.peripheral)?;
+        writeln!(f, "    free frame:        {:?}", self.free_frame)?;
+        writeln!(f, "    lower free page:   {:?}", self.lower_free_page)?;
+        write!(f, "    higher free page:  {:?}", self.higher_free_page)
     }
 }
 
@@ -104,28 +89,24 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     // pub unsafe fn kernel_main(x0: u64) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
-    memory::init().unwrap();
-    println!(" bootinf:\n{}", boot_info);
-    // println!("\nx0 = {:#018x}", x0);
-    println!(" l1 = {:#018x}", config::LOWER_L1_VIRTUAL_ADDRESS);
-    let l1_va = config::LOWER_L1_VIRTUAL_ADDRESS as *mut u64;
-    unsafe {
-        println!(" l1[0] = {:#066b}", *l1_va.offset(0));
-        //*l1_va = 0;
-        // println!(" l1[0] = {:#066b}", *l1.offset(0));
-        // println!("l1[511] = {:#066b}", *l1.offset(511));
-    }
-    let (_, el) = exception::current_privilege_level();
-    println!("Current privilege level: {}", el);
+    memory::init(boot_info).unwrap();
+    println!("Boot info:");
+    println!("{}", boot_info);
+    println_1!(
+        "Free 4K frame: {}",
+        boot_info.free_frame.count_4K().unwrap()
+    );
+    println!(
+        "end : {:018x}",
+        memory::config::KERNEL_BASE
+            | (510 << memory::config::L1_INDEX_SHIFT)
+            | (495 << memory::config::L2_INDEX_SHIFT)
+            | (507 << memory::config::L3_INDEX_SHIFT)
+    );
 
-    println!("Trying to trigger an exception..");
     unsafe {
-        core::ptr::write_volatile(
-            ((config::KERNEL_OFFSET) | (510 << 30) | (495 << 21) | (509 << 12)) as *mut u8,
-            42,
-        );
-        // core::ptr::write_volatile(0x200000 as *mut u8, 42);
-        // core::ptr::write_volatile(0x40000000 as *mut u8, 42);
+        let ptr = 0x10000 as *mut u64;
+        core::ptr::write_volatile(ptr, 42);
     }
 
     println!("Passed!");
@@ -149,8 +130,39 @@ fn test_runner(tests: &[&test_types::UnitTest]) {
 pub unsafe fn kernel_main() -> ! {
     // exception::handling_init();
     // bsp::driver::qemu_bring_up_console();
-
     test_main();
 
     cpu::qemu_exit_success()
+}
+
+#[cfg(test)]
+extern "C" {
+    static __boot_core_stack_end_exclusive: u8;
+}
+
+#[cfg(test)]
+#[inline(always)]
+unsafe fn prepare_el2_to_el1() {
+    CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCEN::SET + CNTHCTL_EL2::EL1PCTEN::SET);
+    CNTVOFF_EL2.set(0);
+
+    HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
+
+    SPSR_EL2.write(
+        SPSR_EL2::D::Masked
+            + SPSR_EL2::A::Masked
+            + SPSR_EL2::I::Masked
+            + SPSR_EL2::F::Masked
+            + SPSR_EL2::M::EL1h,
+    );
+
+    ELR_EL2.set(crate::kernel_main as *const () as u64);
+    SP_EL1.set(&__boot_core_stack_end_exclusive as *const u8 as u64);
+}
+
+#[cfg(test)]
+#[no_mangle]
+pub unsafe extern "C" fn _start_rust() -> ! {
+    prepare_el2_to_el1();
+    asm::eret()
 }

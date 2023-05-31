@@ -35,7 +35,7 @@ TARGET            = aarch64-unknown-none-softfloat
 KERNEL_BIN        = kernel8.img
 QEMU_BINARY       = qemu-system-aarch64
 QEMU_MACHINE_TYPE = raspi3b
-QEMU_RELEASE_ARGS = -serial stdio -display none -machine $(QEMU_MACHINE_TYPE)      
+QEMU_RELEASE_ARGS = -serial stdio -display none  -machine $(QEMU_MACHINE_TYPE)      
 QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
 OBJDUMP_BINARY    = aarch64-none-elf-objdump
 NM_BINARY         = aarch64-none-elf-nm
@@ -66,6 +66,9 @@ export LD_SCRIPT_FOLDER
 BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/boot.s
 ASSEMBLED_BOOT = ./target/$(TARGET)/boot.o
 
+TEST_BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/test-boot.s
+TEST_ASSEMBLED_BOOT = ./target/$(TARGET)/test-boot.o
+
 KERNEL_LIB = ./target/$(TARGET)/$(PROFILE)/liblibkernel.a
 KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
 
@@ -76,6 +79,7 @@ KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST)
 ##--------------------------------------------------------------------------------------------------
 KERNEL_MANIFEST      = $(shell pwd)/kernel/Cargo.toml
 KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/kernel.ld
+TEST_KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/test-kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
 KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/kernel
@@ -95,8 +99,8 @@ RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
 
 RUSTFLAGS_TEST_UNIT = $(RUSTC_MISC_ARGS)                   \
     -C link-arg=--library-path=./target/$(TARGET)/  \
-	-C link-arg=--library=:boot.o \
-    -C link-arg=--script=$(KERNEL_LINKER_SCRIPT_PATH) 
+	-C link-arg=--library=:test-boot.o \
+    -C link-arg=--script=$(TEST_KERNEL_LINKER_SCRIPT_PATH) 
 
 RUSTFLAGS_DEBUG =  -C opt-level=0   -C debuginfo=2                               
 
@@ -293,10 +297,12 @@ define KERNEL_TEST_RUNNER
     TEST_ELF=$$(echo $$1 | sed -e 's/.*target/target/g')
     TEST_BINARY=$$(echo $$1.img | sed -e 's/.*target/target/g')
 
+	echo $$TEST_BINARY
+
 	# $(DOCKER_TOOLS) $(READELF_BINARY) --headers $$TEST_ELF 
 	# $(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $$TEST_ELF | sort | rustfilt
     $(OBJCOPY_CMD) $$TEST_ELF $$TEST_BINARY
-    $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS) -kernel $$TEST_BINARY
+    $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS)  -kernel $$TEST_BINARY 
 endef
 
 export KERNEL_TEST_RUNNER
@@ -307,7 +313,7 @@ define test_prepare
     @chmod +x target/kernel_test_runner.sh
 endef
 
-test_unit: $(ASSEMBLED_BOOT)
+test_unit: $(TEST_ASSEMBLED_BOOT)
 	$(call color_header, "Compiling unit test(s) - $(BSP)")
 	$(call test_prepare)
 	RUSTFLAGS="$(RUSTFLAGS_TEST_UNIT)" $(TEST_CMD) 
@@ -323,6 +329,10 @@ $(ASSEMBLED_BOOT): $(BOOT_ASM)
 	@echo $(ASSEMBLED_BOOT)
 	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
 
+$(TEST_ASSEMBLED_BOOT): $(TEST_BOOT_ASM)
+	$(call color_header, "Assembling test-boot.s")
+	@echo $(TEST_ASSEMBLED_BOOT)
+	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(TEST_ASSEMBLED_BOOT) $(TEST_BOOT_ASM)
 
 $(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 	$(call color_header, "Linking kernel ELF - $(BSP)")

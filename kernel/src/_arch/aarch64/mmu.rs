@@ -1,10 +1,10 @@
 use crate::{
     errno::{ErrorCode, EAGAIN},
-    unsafe_println,
+    println,
 };
-use aarch64_cpu::{asm::barrier, registers::*};
+use aarch64_cpu::{ registers::*};
 use spin::{mutex::SpinMutex, once::Once};
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{ Readable, Writeable};
 
 #[path = "mmu/address.rs"]
 pub mod address;
@@ -17,26 +17,21 @@ pub mod translation_entry;
 #[path = "mmu/translation_table.rs"]
 pub mod translation_table;
 
-#[path = "mmu/frame_allocator.rs"]
-mod frame_allocator;
+#[path = "mmu/allocator.rs"]
+mod allocator;
+#[path = "mmu/heap.rs"]
+mod heap;
 
 use cache::*;
 pub use mmu_config::config;
 pub use translation_entry::*;
 pub use translation_table::*;
 pub use address::*;
-use frame_allocator::*;
+use allocator::*;
 
-extern "C" {
-    static __code_start: u8;
-    static __code_end_exclusive: u8;
-    static __bss_start: u8;
-    static __bss_end_exclusive: u8;
-    static __data_start: u8;
-    static __data_end_exclusive: u8;
-    static l1_lower_page_tabel: u8;
-    static l1_higher_page_tabel: u8;
-}
+use crate::BootInfo;
+
+
 
 fn config_registers_el1() -> Result<(), ErrorCode> {
         // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
@@ -44,7 +39,7 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
     let t0sz: u64 = 16 + 9; // start from level 1
     let t1sz: u64 = 16 + 9; // start from level 1
 
-    unsafe_println!(
+    println!(
         "TTBR0: 0x0 - {:#x}",
         u64::pow(2, (64 - t0sz) as u32) - 1
     );
@@ -97,30 +92,8 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
 
         
 
-pub fn init() -> Result<(), ErrorCode> {
-    /*
-    config_registers_el1()?;
-    /*
-    unsafe{
-        let l1_pa = PhysicalAddress::try_from(&__l1_page_table_start as * const _ as usize).unwrap();
-        set_ttbr0(l1_pa, 0);
-    }
-        */
+pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
 
-    // Enable the MMU and turn on data and instruction caching.
-
-    SCTLR_EL1.modify(
-        SCTLR_EL1::M::Enable
-        + SCTLR_EL1::C::Cacheable
-        + SCTLR_EL1::I::Cacheable
-        + SCTLR_EL1::WXN::Disable
-        + SCTLR_EL1::UCI::Trap, // Cache maintenance instruction at EL0 are not allowed
-    );
-
-    barrier::isb(barrier::SY);
-
-    unsafe_println!("SCTLR_EL1 = {:#066b}", SCTLR_EL1.get());
-    */
 
     
     MMU.call_once(|| {
@@ -129,6 +102,13 @@ pub fn init() -> Result<(), ErrorCode> {
             UnsafeTranslationTable::new(config::HIGHER_L1_VIRTUAL_ADDRESS as *mut L1Entry),
         )
     });
+
+    //  give 2m va and pa to the heap allocator so that it can distribute memory to the page and
+    //   frame allocator
+    let mut lower_free_page_range = boot_info.lower_free_page;
+    let mut higher_free_page_range = boot_info.higher_free_page;
+    println!("higher page range: {}", higher_free_page_range);
+    let mut free_frame = boot_info.free_frame;
     
 
     Ok(())
@@ -162,12 +142,11 @@ impl MemoryManagementUnit {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-        frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         if va.is_lower(){
-        self.lower_l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        self.lower_l1.lock().map(va,pa, mt, BlockSize::_4K)
         }else{
-        self.higher_l1.lock().map(va,pa, mt, BlockSize::_4K,  frame_allocator)
+        self.higher_l1.lock().map(va,pa, mt, BlockSize::_4K)
         }
     }
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
@@ -189,7 +168,6 @@ mod tests {
     use test_macros::kernel_test;
     #[kernel_test]
     fn test_mmu() {
-         super::init().unwrap();
 
     }
 }

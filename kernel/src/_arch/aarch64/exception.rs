@@ -1,8 +1,8 @@
-use crate::{errno::ErrorCode, exception::PrivilegeLevel, unsafe_println};
+use crate::{errno::ErrorCode, exception::PrivilegeLevel};
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::fmt;
 use tock_registers::{
-    interfaces::{ReadWriteable, Readable, Writeable},
+    interfaces::{ReadWriteable, Readable},
     registers::InMemoryRegister,
 };
 

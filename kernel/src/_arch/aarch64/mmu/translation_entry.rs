@@ -1,5 +1,5 @@
 use super::{address::*, config};
-use crate::{errno::*, unsafe_println, utils::bitfields::Bitfields};
+use crate::{errno::*, utils::bitfields::Bitfields};
 use core::{fmt, marker::PhantomData, ops::Range};
 
 #[derive(Default)]

@@ -1,5 +1,5 @@
-use super::{address::*, cache::*, config, frame_allocator::*, translation_entry::*, BlockSize};
-use crate::{bsp::mmio, errno::*, println, unsafe_print, unsafe_println};
+use super::{address::*, allocator::*, cache::*, config, translation_entry::*, BlockSize};
+use crate::{errno::*, println, unsafe_println};
 use aarch64_cpu::{
     asm::barrier,
     registers::{TTBR0_EL1, TTBR1_EL1},
@@ -104,19 +104,18 @@ impl UnsafeTranslationTable<Level1> {
         pa: PhysicalAddress,
         mt: &MemoryType,
         sz: BlockSize,
-        frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         match sz {
-            BlockSize::_4K => self.map_4K(va, pa, mt, frame_allocator),
-            BlockSize::_2M => self.map_2M(va, pa, mt, frame_allocator),
-            BlockSize::_1G => self.map_1G(va, pa, mt, frame_allocator),
+            BlockSize::_4K => self.map_4K(va, pa, mt),
+            BlockSize::_2M => self.map_2M(va, pa, mt),
+            BlockSize::_1G => self.map_1G(va, pa, mt),
         }
     }
 
     fn l2_table_address(va: VirtualAddress) -> usize {
         let mut res: usize = 0;
         if va.is_higher() {
-            res = config::KERNEL_OFFSET;
+            res = config::KERNEL_BASE;
         }
         let l1_index = va.level1();
         res | (config::RECURSIVE_L1_INDEX << config::L1_INDEX_SHIFT)
@@ -126,7 +125,7 @@ impl UnsafeTranslationTable<Level1> {
     fn l3_table_address(va: VirtualAddress) -> usize {
         let mut res: usize = 0;
         if va.is_higher() {
-            res = config::KERNEL_OFFSET;
+            res = config::KERNEL_BASE;
         }
         let l1_index = va.level1();
         let l2_index = va.level2();
@@ -139,7 +138,6 @@ impl UnsafeTranslationTable<Level1> {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-        frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         if !va.is_4K_aligned() || !pa.is_4K_aligned() {
             return Err(EALIGN);
@@ -151,7 +149,7 @@ impl UnsafeTranslationTable<Level1> {
                 l1_entry = l1_entry.set_table()?;
                 l1_entry.set_attributes(TABLE_PAGE)?;
                 let allocated_frame_addr: PhysicalAddress =
-                    frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
+                    FRAME_ALLOCATOR.get().unwrap().allocate_4K().ok_or(EFRAME)?;
                 l1_entry.set_address(allocated_frame_addr)?;
                 self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
 
@@ -171,8 +169,9 @@ impl UnsafeTranslationTable<Level1> {
             Descriptor::INVALID => {
                 l2_entry = l2_entry.set_table()?;
                 l2_entry.set_attributes(TABLE_PAGE)?;
+
                 let allocated_frame_addr: PhysicalAddress =
-                    frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
+                    FRAME_ALLOCATOR.get().unwrap().allocate_4K().ok_or(EFRAME)?;
                 l2_entry.set_address(allocated_frame_addr)?;
                 l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry))?;
 
@@ -204,7 +203,6 @@ impl UnsafeTranslationTable<Level1> {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-        frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         if !va.is_2M_aligned() || !pa.is_2M_aligned() {
             return Err(EALIGN);
@@ -216,7 +214,7 @@ impl UnsafeTranslationTable<Level1> {
                 l1_entry = l1_entry.set_table()?;
                 l1_entry.set_attributes(TABLE_PAGE)?;
                 let allocated_frame_addr: PhysicalAddress =
-                    frame_allocator.frame_alloc().ok_or(EFRAME)?.to_address();
+                    FRAME_ALLOCATOR.get().unwrap().allocate_4K().unwrap();
                 l1_entry.set_address(allocated_frame_addr)?;
                 self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
 
@@ -248,7 +246,6 @@ impl UnsafeTranslationTable<Level1> {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-        _frame_allocator: &mut dyn FrameAllocator,
     ) -> Result<(), ErrorCode> {
         if !va.is_1G_aligned() || !pa.is_1G_aligned() {
             return Err(EALIGN);

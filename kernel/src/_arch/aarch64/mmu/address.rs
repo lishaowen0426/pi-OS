@@ -1,5 +1,5 @@
 use super::config;
-use crate::{errno::*, println, utils::bitfields::Bitfields};
+use crate::{errno::*, utils::bitfields::Bitfields};
 use core::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -13,6 +13,7 @@ macro_rules! declare_address {
         #[repr(transparent)]
         pub struct $name($tt);
 
+        #[derive(Clone, Copy)]
         #[repr(C)]
         pub struct $name_range {
             start: $name,
@@ -70,6 +71,8 @@ macro_rules! impl_address {
     ($name: ident) => {
         #[allow(non_snake_case, dead_code)]
         impl $name {
+            pub const _4K: Self = Self(0x1000);
+            pub const _2M: Self = Self(0x200000);
             pub fn value(&self) -> usize {
                 self.0
             }
@@ -111,22 +114,6 @@ macro_rules! impl_address {
             }
             pub fn is_aligned_to(&self, alignment: usize) -> bool {
                 (self.0 & (!(alignment - 1))) == self.0
-            }
-
-            pub fn shift_4K(&self) -> Self {
-                Self(self.0 >> config::SHIFT_4K)
-            }
-            pub fn shift_16K(&self) -> Self {
-                Self(self.0 >> config::SHIFT_16K)
-            }
-            pub fn shift_64K(&self) -> Self {
-                Self(self.0 >> config::SHIFT_64K)
-            }
-            pub fn shift_2M(&self) -> Self {
-                Self(self.0 >> config::SHIFT_2M)
-            }
-            pub fn shift_1G(&self) -> Self {
-                Self(self.0 >> config::SHIFT_1G)
             }
 
             pub fn align_to_4K_up(&self) -> Self {
@@ -192,6 +179,124 @@ macro_rules! impl_number {
         }
     };
 }
+
+// an end-exclusive address range
+pub trait AddressRange {
+    type Address;
+    fn start(&self) -> Self::Address;
+    fn end(&self) -> Self::Address;
+    fn empty(&self) -> bool;
+
+    // start is aligned down, end is aligned up
+    fn align_to_4K(&self) -> Self;
+    fn align_to_2M(&self) -> Self;
+
+    fn pop_4K_front(&mut self) -> Option<Self::Address>;
+    fn pop_2M_front(&mut self) -> Option<Self::Address>;
+
+    fn pop_4K_back(&mut self) -> Option<Self::Address>;
+    fn pop_2M_back(&mut self) -> Option<Self::Address>;
+
+    fn pop_4K_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+    where
+        Self: Sized;
+    fn pop_2M_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+    where
+        Self: Sized;
+}
+
+macro_rules! impl_address_range {
+    ($name: ident, $addr: ty) => {
+        impl $name {
+            pub fn new(start: $addr, end: $addr) -> Self {
+                Self { start, end }
+            }
+
+            pub fn count_4K(&self) -> Result<usize, ErrorCode> {
+                let diff = self.end - self.start;
+                if !diff.is_4K_aligned() {
+                    Err(EALIGN)
+                } else {
+                    Ok(diff.value() / 4096)
+                }
+            }
+        }
+
+        impl AddressRange for $name {
+            type Address = $addr;
+
+            fn start(&self) -> Self::Address {
+                self.start
+            }
+            fn end(&self) -> Self::Address {
+                self.end
+            }
+
+            fn empty(&self) -> bool {
+                self.start == self.end
+            }
+
+            // start is aligned down, end is aligned up
+            fn align_to_4K(&self) -> Self {
+                Self::new(self.start.align_to_4K_down(), self.end.align_to_4K_up())
+            }
+            fn align_to_2M(&self) -> Self {
+                Self::new(self.start.align_to_2M_down(), self.end.align_to_2M_up())
+            }
+
+            fn pop_4K_front(&mut self) -> Option<Self::Address> {
+                if self.end - self.start < Self::Address::_4K {
+                    None
+                } else {
+                    let popped = self.start;
+                    self.start = self.start + Self::Address::_4K;
+                    Some(popped)
+                }
+            }
+            fn pop_2M_front(&mut self) -> Option<Self::Address> {
+                if self.end - self.start < Self::Address::_2M {
+                    None
+                } else {
+                    let popped = self.start;
+                    self.start = self.start + Self::Address::_2M;
+                    Some(popped)
+                }
+            }
+
+            fn pop_4K_back(&mut self) -> Option<Self::Address> {
+                if self.end - self.start < Self::Address::_4K {
+                    None
+                } else {
+                    self.end = self.end - Self::Address::_4K;
+                    let popped = self.end;
+                    Some(popped)
+                }
+            }
+            fn pop_2M_back(&mut self) -> Option<Self::Address> {
+                if self.end - self.start < Self::Address::_2M {
+                    None
+                } else {
+                    self.end = self.end - Self::Address::_2M;
+                    let popped = self.end;
+                    Some(popped)
+                }
+            }
+
+            fn pop_4K_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+            where
+                Self: Sized,
+            {
+                None
+            }
+            fn pop_2M_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+            where
+                Self: Sized,
+            {
+                None
+            }
+        }
+    };
+}
 declare_address!(VirtualAddress, VaRange, usize, "{:#018x}");
 declare_address!(PhysicalAddress, PaRange, usize, "{:#018x}");
 declare_address!(PageNumber, PageRange, usize, "{}");
@@ -201,6 +306,8 @@ impl_address!(VirtualAddress);
 impl_address!(PhysicalAddress);
 impl_number!(PageNumber);
 impl_number!(FrameNumber);
+impl_address_range!(VaRange, VirtualAddress);
+impl_address_range!(PaRange, PhysicalAddress);
 
 // 32 bytes
 #[repr(C)]
@@ -508,4 +615,7 @@ mod tests {
     use crate::bsp;
     #[allow(unused_imports)]
     use test_macros::kernel_test;
+
+    #[kernel_test]
+    fn test_address_range() {}
 }
