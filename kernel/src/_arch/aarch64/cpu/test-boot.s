@@ -154,7 +154,7 @@ _start:
 
     adr_load                x0, __boot_core_stack_end_exclusive
     mov                sp, x0
-
+    bl 		.L_prepare_boot_info
     b kernel_main
 
 //x0: l3 base address
@@ -192,6 +192,48 @@ _start:
     ldr         x0, =.L_QEMU_CONSOLE
     mov         x1, #0b1000001
     str         x1, [x0]
+    ret
+
+.L_prepare_boot_info:
+    sub     sp, sp, #176
+    //code_and_ro
+    adr_load    x1, __code_start
+    adr_load    x2, __code_end_exclusive
+    stp         x1, x2, [sp, #16 * 0]
+    stp         x1, x2, [sp, #16 * 1]
+
+    //bss
+    adr_load    x1, __bss_start
+    adr_load    x2, __bss_end_exclusive
+    stp         x1, x2, [sp, #16 * 2]
+    stp         x1, x2, [sp, #16 * 3]
+
+
+    //stack
+    adr_load    x1, __rpi_phys_dram_start_addr
+    adr_load    x2, __boot_core_stack_end_exclusive
+    stp         x1, x2, [sp, #16 * 4]
+    stp         x1, x2, [sp, #16 * 5]
+
+    //peripheral
+    ldr         x1,  =.L_PERIPHERAL_PHYSICAL_START
+    ldr         x2,  =.L_PERIPHERAL_PHYSICAL_END
+    stp         x1, x2, [sp, #16 * 6]
+    stp         x1, x2, [sp, #16 * 7]
+
+    //free frame
+    adr_load    x1,  __boot_core_stack_end_exclusive
+    ldr         x2,  =.L_PERIPHERAL_PHYSICAL_START
+    stp         x1, x2, [sp, #16 * 8]
+
+    //lower free page
+    stp     	x1, x2, [sp, #16 * 9]
+
+    //higher free page
+    stp     	x2, x2, [sp, #16 * 10]
+
+   mov        x0, sp
+
     ret
 
 //x0 start address

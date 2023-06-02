@@ -89,7 +89,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
     memory::init(boot_info).unwrap();
-    println!("Boot info:");
+    println!(" Boot info:");
     println!("{}", boot_info);
     println_1!(
         "Free 4K frame: {}",
@@ -126,46 +126,16 @@ fn test_runner(tests: &[&test_types::UnitTest]) {
 
 #[cfg(test)]
 #[no_mangle]
-pub unsafe fn kernel_main() -> ! {
+pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     // exception::handling_init();
     // bsp::driver::qemu_bring_up_console();
     println!(
         "current exception level {}",
         exception::current_privilege_level().1
     );
+    println!("Boot info:");
+    println!("{}", boot_info);
     test_main();
 
     cpu::qemu_exit_success()
-}
-
-#[cfg(test)]
-extern "C" {
-    static __boot_core_stack_end_exclusive: u8;
-}
-
-#[cfg(test)]
-#[inline(always)]
-unsafe fn prepare_el2_to_el1() {
-    CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCEN::SET + CNTHCTL_EL2::EL1PCTEN::SET);
-    CNTVOFF_EL2.set(0);
-
-    HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
-
-    SPSR_EL2.write(
-        SPSR_EL2::D::Masked
-            + SPSR_EL2::A::Masked
-            + SPSR_EL2::I::Masked
-            + SPSR_EL2::F::Masked
-            + SPSR_EL2::M::EL1h,
-    );
-
-    ELR_EL2.set(crate::kernel_main as *const () as u64);
-    SP_EL1.set(&__boot_core_stack_end_exclusive as *const u8 as u64);
-}
-
-#[cfg(test)]
-#[no_mangle]
-pub unsafe extern "C" fn _start_rust() -> ! {
-    prepare_el2_to_el1();
-    asm::eret()
 }
