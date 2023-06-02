@@ -35,7 +35,7 @@ TARGET            = aarch64-unknown-none-softfloat
 KERNEL_BIN        = kernel8.img
 QEMU_BINARY       = qemu-system-aarch64
 QEMU_MACHINE_TYPE = raspi3b
-QEMU_RELEASE_ARGS = -serial stdio -display none  -d in_asm -machine $(QEMU_MACHINE_TYPE)
+QEMU_RELEASE_ARGS = -serial stdio -display none  -machine $(QEMU_MACHINE_TYPE)
 QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
 OBJDUMP_BINARY    = aarch64-none-elf-objdump
 NM_BINARY         = aarch64-none-elf-nm
@@ -165,7 +165,7 @@ endif
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) $(ASSEMBLED_BOOT)
+.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) $(ASSEMBLED_BOOT) $(TEST_ASSEMBLED_BOOT)
 
 
 all: $(KERNEL_BIN)

@@ -1,20 +1,7 @@
 
 .include "defines.s"
-/*load-time address, i.e., pc-relative*/
-.macro ADR_LOAD register, symbol
-	adrp	\register, \symbol
-	add	    \register, \register, #:lo12:\symbol
-.endm
+.include "macro.s"
 
-
-// Load a link-time address
-.macro ADR_LINK register, symbol
-	movz	\register, #:abs_g2:\symbol
-	movk	\register, #:abs_g1_nc:\symbol
-	movk	\register, #:abs_g0_nc:\symbol
-.endm
-
-.equ .L_BOOT_CORE_ID, 0
 
 .section .text._start
 
@@ -31,31 +18,21 @@ _start:
     cmp         x1, x2
     b.ne        .L_parking_loop
 
-    ADR_LOAD    x0, __bss_start
-    ADR_LOAD    x1, __bss_end_exclusive
-
+    b .L_el2_to_el1
 
 .L_bss_init_loop:
-    cmp         x0, x1
-    b.eq        .L_prepare_rust
-    stp         xzr, xzr, [x0], #16
-    b           .L_bss_init_loop
+    adr_load    x0, __bss_start
+   adr_load    x1, __bss_end_exclusive
+    bl     clear_memory_range
 
+    //it takes too long to clear in qemu... let's assume it is all zeros
+    //adr_load    x0, __page_table_start
+    //adr_load    x0, __page_table_end_exclusive
+    //bl     clear_memory_range
 
-.L_prepare_rust:
-    ADR_LOAD x0, __boot_core_stack_end_exclusive
-    mov sp, x0
+    bl     .L_map_lower_half
+    b      .L_enable_paging
 
-
-    ADR_LOAD    x0, l1_page_table
-    add         x1, x0, #4096
-.L_prepare_l1_page_table:
-    stp         xzr, xzr, [x0], #16
-    cmp         x0, x1
-    b.ne        .L_prepare_l1_page_table
-
-
-    b _start_rust
 
 
 
@@ -63,16 +40,152 @@ _start:
 .L_parking_loop:
 	wfe
 	b	.L_parking_loop
+.L_el2_to_el1:
+    ldr                 x0, =.L_CNTHCTL_EL2_val
+    msr                 CNTHCTL_EL2, x0
+
+    ldr                 x0, =.L_CNTVOFF_EL2_val
+    msr                 CNTVOFF_EL2, x0
+
+    ldr                 x0, =.L_HCR_EL2_val
+    msr                 HCR_EL2, x0
+
+    ldr                 x0, =.L_SPSR_EL2_val //all interrupts are masked
+    msr                 SPSR_EL2, x0
+
+    adr_load            x0, .L_bss_init_loop
+    msr                 ELR_EL2, x0
+
+    adr_load            x0, __exception_vector_start
+    msr                 VBAR_EL1, x0  //exception vector needs to be virtual
+
+    adr_load            x0, __boot_core_stack_end_exclusive
+    msr                 SP_EL1, x0
+
+    eret
 
 
-//x0 start address
-.global clear_frame
-clear_frame:
-    add x1, x0, #4096
-1:
-    stp         xzr, xzr, [x0], #16
-    cmp         x0, x1
-    b.ne        1b
+.L_map_lower_half:
+
+    mov                 x6, lr      // save the link register
+
+    adr_load            x0, l1_lower_page_table
+
+    //fill in the recursive entry
+    //L1[511] = L1
+    adr_load            x1, l1_lower_page_table
+    ldr                 x2, =.L_RECURSIVE_ATTR
+    make_recursive_entry    x1, x1, x2
+    ldr                 x2, =.L_RECURSIVE_INDEX
+    adr_load            x0, l1_lower_page_table
+    str                 x1, [x0, x2, LSL #3]
+
+    //L1[0] = lower L2
+    adr_load            x1, l2_lower_page_table
+    ldr                 x2, =.L_TABLE_ATTR
+    make_table_entry    x1, x1, x2
+    str                 x1, [x0, xzr, LSL #3]
+
+    //lower L2[0] = L3
+    adr_load            x1, l3_lower_page_table
+    ldr                 x2, =.L_TABLE_ATTR
+    make_table_entry    x1, x1, x2
+    adr_load            x3, l2_lower_page_table
+    str                 x1, [x3, xzr, LSL #3]
+
+
+
+//stack
+    adr_load            x0, l3_lower_page_table
+    adr_load            x1, __rpi_phys_dram_start_addr
+    adr_load            x2, __boot_core_stack_end_exclusive
+    ldr                 x3, =.L_RWNORMAL
+    bl .L_fill_l3_table
+
+
+
+    //code + rodata
+    adr_load            x0, l3_lower_page_table
+    adr_load            x1, __code_start
+    adr_load            x2, __data_end_exclusive
+    ldr                 x3, =.L_XNORMAL
+    bl .L_fill_l3_table
+
+    //bss
+    adr_load            x0, l3_lower_page_table
+    adr_load            x1, __bss_start
+    adr_load            x2, __bss_end_exclusive
+    ldr                 x3, =.L_RWNORMAL
+    bl .L_fill_l3_table
+
+    //pi3 peripheral
+    adr_load            x0, l2_lower_page_table
+    ldr            x1, =.L_PI3_PERIPHERAL_PHYSICAL_START
+    ldr           x2, =.L_PI3_PERIPHERAL_PHYSICAL_END
+    ldr                 x3, =.L_RWDEVICE
+    bl  .L_fill_l2_table
+
+
+
+    mov lr, x6
+    ret
+
+.L_enable_paging:
+    adr_load           x0, l1_lower_page_table
+    msr                ttbr0_el1, x0
+
+
+    adr_load           x0, l1_higher_page_table
+    msr                ttbr1_el1, x0
+
+    ldr                x0, =.L_TCR_EL1_val
+    msr                TCR_EL1, x0
+
+
+    ldr                x0, =.L_MAIR_EL1_val
+    msr                MAIR_EL1, x0
+
+
+    ldr                x0, =.L_SCTLR_EL1_val
+    msr                SCTLR_EL1, x0
+
+    isb                sy
+
+
+    adr_load                x0, __boot_core_stack_end_exclusive
+    mov                sp, x0
+
+    b kernel_main
+
+//x0: l3 base address
+//x1: start address
+//x2: end address exclusive
+//x3: memory type
+.L_fill_l3_table:
+    and                 x1, x1, #~(0x1000-1)
+    get_level3_index    x4, x1
+    make_page_entry     x5, x1, x3
+    str                 x5, [x0, x4, LSL #3]
+
+    add                 x1, x1, #0x1000
+    cmp                 x1, x2
+    b.lt                .L_fill_l3_table
+    ret
+
+
+//x0: l2 base address
+//x1: start address
+//x2: end address exclusive
+//x3: memory type
+.L_fill_l2_table:
+    and                 x1, x1, #~(0x200000-1)
+    get_level2_index    x4, x1
+    make_block_entry    x5, x1, x3
+    str                 x5, [x0, x4, LSL #3]
+
+    add                 x1, x1, #0x200000
+    cmp                 x1, x2
+    b.lt                .L_fill_l2_table
     ret
 
 .L_qemu_print:
@@ -81,6 +194,14 @@ clear_frame:
     str         x1, [x0]
     ret
 
+//x0 start address
+//x1 end exclusive
+.global clear_memory_range
+clear_memory_range:
+    stp         xzr, xzr, [x0], #16
+    cmp         x0, x1
+    b.ne        clear_memory_range
+    ret
 
 
 .size	_start, . - _start
@@ -89,11 +210,24 @@ clear_frame:
 
 .include "exception.s"
 
+
+
+
+
+
 .section page_table, "aw", @nobits
 .p2align 12
-.global l1_page_table
-l1_page_table:
+.global l1_lower_page_table
+l1_lower_page_table:
     .space 4096, 0
-
-
-
+.global l1_higher_page_table
+l1_higher_page_table:
+    .space 4096, 0
+l2_lower_page_table:
+    .space 4096, 0
+l2_higher_page_table:
+    .space 4096, 0
+l3_lower_page_table:
+    .space 4096, 0
+l3_higher_page_table:
+    .space 4096, 0

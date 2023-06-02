@@ -1,22 +1,22 @@
  /*
- ttbr0_el1              0x0     +---- +---------------+                                                                                                                    
-                                |     |               |                                                                                                
-                                |     |               |                                                                                                                   
-                                |     |               |                                                                                                                   
-                                |     |               |                                                                                                                   
-                                |     |               |                                lower l2                                                                            
-                                |     |               |                   +------ +----------------+                                                                       
-                                |     |   lower free  |                   |       |      0         |------------------+                                                    
-                                |     |               |                   |       |--------------- |                  |                                                    
-                                |     |               |                   |       |                |                  |                                                    
-                                |     |               |                   |       |                |                  |                                                    
-                                |     |               |                   |       |                |                  |                                                    
-                                |     |               |                   |       |                |                  |                                                    
-                                |     |---------------|                   |       |                |                  |                                                    
-                                 -----|     511       |                   |       |                |                  |                                                    
-                                      +---------------+                   |       |                |                  |                                                    
-                                                                          |       |                |                  |                                                    
-                                                                          |       |                |                  |           lower l3                     physical    
+ ttbr0_el1              0x0     +---- +---------------+
+                                |     |               |
+                                |     |               |
+                                |     |               |
+                                |     |               |
+                                |     |               |                                lower l2
+                                |     |               |                   +------ +----------------+
+                                |     |   lower free  |                   |       |      0         |------------------+
+                                |     |               |                   |       |--------------- |                  |
+                                |     |               |                   |       |                |                  |
+                                |     |               |                   |       |                |                  |
+                                |     |               |                   |       |                |                  |
+                                |     |               |                   |       |                |                  |
+                                |     |---------------|                   |       |                |                  |
+                                 -----|     511       |                   |       |                |                  |
+                                      +---------------+                   |       |                |                  |
+                                                                          |       |                |                  |
+                                                                          |       |                |                  |           lower l3                     physical
                                                                           |       |                |                  |---+ +--------------+               +--------------+
                                                                           |       |                |                        |              |               |              |
                                                                           |       |                |                        |              |               |              |
@@ -57,74 +57,14 @@ ttbr1_el1   0xffffff8000000000   ----++---------------+                   |     
                                                                                                                                                            +--------------+
                                                                                                                                                            */
 .include "defines.s"
-/*load-time address, i.e., pc-relative*/
-.macro adr_load register, symbol
-	adrp	\register, \symbol
-	add	    \register, \register, #:lo12:\symbol
-.endm
-
-.macro adr_absolute dest, symbol
-    movz x0, #:abs_g2:\symbol		// bits 32-47, overflow check
-    movk x0, #:abs_g1_nc:\symbol	// bits 16-31, no overflow check
-    movk x0, #:abs_g0_nc:\symbol	// bits  0-15, no overflow check
-.endm
+.include "macro.s"
 
 
-.macro adr_link dest, symbol
-    ldr                 x0, =.L_KERNEL_BASE
-    adr_load            x1, \symbol
-    add                 \dest, x0, x1
-
-.endm
-
-.macro make_invalid_entry dest
-    mov \dest, xzr
-.endm
-
-.macro make_table_entry  dest, src,  memory_type
-    orr \dest, \src,  \memory_type
-    orr \dest, \dest, #0b11
-.endm
-
-.macro make_recursive_entry  dest, src,  memory_type
-    orr \dest, \src,  \memory_type
-    orr \dest, \dest, #0b11
-.endm
-
-.macro make_block_entry  dest, src,  memory_type
-    orr \dest, \src,  \memory_type
-    orr \dest, \dest, #0b01
-.endm
-
-.macro make_page_entry  dest, src,  memory_type
-    orr \dest, \src,  \memory_type
-    orr \dest, \dest, #0b11
-.endm
-
-.macro get_level1_index dest, src
-    mov \dest, \src, LSR .L_L1_SHIFT
-    and \dest, \dest, .L_INDEX_MASK
-.endm
-
-.macro get_level2_index dest, src
-    mov \dest, \src, LSR .L_L2_SHIFT
-    and \dest, \dest, .L_INDEX_MASK
-.endm
-
-.macro get_level3_index dest, src
-    mov \dest, \src, LSR .L_L3_SHIFT
-    and \dest, \dest, .L_INDEX_MASK
-.endm
 
 
-.equ .L_KERNEL_BASE, 0xFFFFFF8000000000
-.equ .L_BOOT_CORE_ID, 0
 
 
-.macro get_rust_const_load dest symbol
-    adr_load    \dest   \symbol
-    ldr    \dest, [\dest]
-.endm
+
 
 
 
@@ -150,7 +90,7 @@ _start:
 
 
     b           .L_el2_to_el1      /*SP_EL1 will be set up open return*/
-    
+
 .L_in_el1:
     adr_load    x0, __bss_start
     adr_load    x1, __bss_end_exclusive
@@ -189,26 +129,26 @@ _start:
     make_recursive_entry    x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
     adr_load            x0, l1_lower_page_table
-    str                 x1, [x0, x2, LSL #3]      
+    str                 x1, [x0, x2, LSL #3]
 
     //L1[0] = lower L2
     adr_load            x1, l2_lower_page_table
     ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
-    str                 x1, [x0, xzr, LSL #3]      
+    str                 x1, [x0, xzr, LSL #3]
 
     //lower L2[0] = L3
     adr_load            x1, l3_lower_page_table
     ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
     adr_load            x3, l2_lower_page_table
-    str                 x1, [x3, xzr, LSL #3]      
+    str                 x1, [x3, xzr, LSL #3]
 
 
 
     //update L3 according to memory type
     //stack and peripheral will be mapped in the higher half
-    
+
 
     //code + rodata
     adr_load            x0, l3_lower_page_table
@@ -216,8 +156,8 @@ _start:
     adr_load            x2, __data_end_exclusive
     ldr                 x3, =.L_XNORMAL
     bl .L_fill_l3_table
-    
-    //bss    
+
+    //bss
     adr_load            x0, l3_lower_page_table
     adr_load            x1, __bss_start
     adr_load            x2, __bss_end_exclusive
@@ -227,7 +167,7 @@ _start:
 
     mov lr, x6
     ret
-    
+
 
 
 //x0: l3 base address
@@ -237,14 +177,14 @@ _start:
 .L_fill_l3_table:
     and                 x1, x1, #~(0x1000-1)
     get_level3_index    x4, x1
-    make_page_entry     x5, x1, x3     
-    str                 x5, [x0, x4, LSL #3]      
+    make_page_entry     x5, x1, x3
+    str                 x5, [x0, x4, LSL #3]
 
     add                 x1, x1, #0x1000
     cmp                 x1, x2
     b.lt                .L_fill_l3_table
     ret
-    
+
 
 //x0: l2 base address
 //x1: start address
@@ -253,14 +193,14 @@ _start:
 .L_fill_l2_table:
     and                 x1, x1, #~(0x200000-1)
     get_level2_index    x4, x1
-    make_block_entry    x5, x1, x3     
-    str                 x5, [x0, x4, LSL #3]      
+    make_block_entry    x5, x1, x3
+    str                 x5, [x0, x4, LSL #3]
 
     add                 x1, x1, #0x200000
     cmp                 x1, x2
     b.lt                .L_fill_l2_table
     ret
-    
+
 	// Infinitely wait for events (aka "park the core").
 .L_parking_loop:
 	wfe
@@ -274,13 +214,13 @@ _start:
     ldr                 x0, =.L_CNTVOFF_EL2_val
     msr                 CNTVOFF_EL2, x0
 
-    ldr                 x0, =.L_HCR_EL2_val 
+    ldr                 x0, =.L_HCR_EL2_val
     msr                 HCR_EL2, x0
 
     ldr                 x0, =.L_SPSR_EL2_val //all interrupts are masked
     msr                 SPSR_EL2, x0
 
-    adr_load            x0, .L_in_el1 
+    adr_load            x0, .L_in_el1
     msr                 ELR_EL2, x0
 
     ldr                 x1, =.L_KERNEL_BASE
@@ -288,11 +228,11 @@ _start:
     add                 x0, x0, x1
     msr                 VBAR_EL1, x0  //exception vector needs to be virtual
 
-    adr_load            x0, initial_stack_top 
+    adr_load            x0, initial_stack_top
     msr                 SP_EL1, x0
 
     eret
-    
+
 
 
 .L_map_higher_half:
@@ -306,22 +246,22 @@ _start:
     ldr                 x2, =.L_RECURSIVE_ATTR
     make_recursive_entry  x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
-    str                 x1, [x0, x2, LSL #3]      
+    str                 x1, [x0, x2, LSL #3]
 
     //higher L1[0] = lower L2, lower l2[0] = lower l3
     adr_load            x1, l2_lower_page_table
     ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
-    str                 x1, [x0, xzr, LSL #3]      
+    str                 x1, [x0, xzr, LSL #3]
 
 
 
-    //higher L1[STACK_MMIO_L1_INDEX(510)] = higher L2 
+    //higher L1[STACK_MMIO_L1_INDEX(510)] = higher L2
     adr_load            x1, l2_higher_page_table
     ldr                 x2, =.L_TABLE_ATTR
     make_table_entry    x1, x1, x2
     ldr                 x3, =.L_STACK_PERIPHERAL_L1_INDEX
-    str                 x1, [x0, x3, LSL #3]      
+    str                 x1, [x0, x3, LSL #3]
 
     //fill higher l2 with MMIO
     adr_load            x0, l2_higher_page_table
@@ -340,7 +280,7 @@ _start:
     b.le                1b
 
 
-    //higher l2[495] = higher l3 
+    //higher l2[495] = higher l3
     adr_load            x0, l2_higher_page_table
     adr_load            x1, l3_higher_page_table
     ldr                 x2, =.L_STACK_L2_INDEX
@@ -363,7 +303,7 @@ _start:
     sub                x1,  x1, #0x1000
     sub                x3,  x3, #1
     cmp                x1,   x2
-    b.gt               2b 
+    b.gt               2b
 
 
 
@@ -371,13 +311,13 @@ _start:
     mov lr, x6
     ret
 
-    
-.L_enable_paging:
-    adr_load           x0, l1_lower_page_table 
-    msr                ttbr0_el1, x0
-    
 
-    adr_load           x0, l1_higher_page_table 
+.L_enable_paging:
+    adr_load           x0, l1_lower_page_table
+    msr                ttbr0_el1, x0
+
+
+    adr_load           x0, l1_higher_page_table
     msr                ttbr1_el1, x0
 
     ldr                x0, =.L_TCR_EL1_val
@@ -398,7 +338,7 @@ _start:
     mov                sp, x0
 
 
-    adr_link            x0, .L_higher_half   
+    adr_link            x0, .L_higher_half
     br                  x0
 
 
@@ -406,7 +346,7 @@ _start:
     //we are in the higher half
     //DONOT use adr_link anymore, as it is based on lower half + kernel_base
 
-    bl                 .L_unmapped_lower               
+    bl                 .L_unmapped_lower
 
     bl                  .L_prepare_boot_info
 
@@ -414,12 +354,12 @@ _start:
 
 
 .L_unmapped_lower:
-   ldr                  x0, =.L_LOWER_L1_VIRTUAL_ADDR 
+   ldr                  x0, =.L_LOWER_L1_VIRTUAL_ADDR
    make_invalid_entry   x1
    str                  x1, [x0, xzr, LSL #3]
 
-   DSB SY 
-   TLBI VMALLE1 
+   DSB SY
+   TLBI VMALLE1
    DSB SY
    ISB sy
 
@@ -445,7 +385,7 @@ _start:
     //bss
     adr_load    x1, __bss_start
     adr_load    x2, __bss_end_exclusive
-    sub         x3,  x1,  x0      
+    sub         x3,  x1,  x0
     sub         x4,  x2,  x0
     stp         x1, x2, [sp, #16 * 2]
     stp         x3, x4, [sp, #16 * 3]
@@ -456,13 +396,13 @@ _start:
     adr_load    x4, initial_stack_top
     sub         x5, x4, x3
     sub         x1, x2, x5  //x1 holds stack bottom
-    sub         x3,  x3,  x0      
+    sub         x3,  x3,  x0
     sub         x4,  x4,  x0
     stp         x1, x2, [sp, #16 * 4]
     stp         x3, x4, [sp, #16 * 5]
 
     //peripheral
-    
+
     ldr         x1,  =.L_PERIPHERAL_VIRTUAL_START
     ldr         x2,  =.L_PERIPHERAL_VIRTUAL_END
     ldr         x3,  =.L_PERIPHERAL_PHYSICAL_START
@@ -474,7 +414,7 @@ _start:
     //free frame
     ldr     x0, =.L_KERNEL_BASE
     adr_load    x1,  initial_double_stack_top
-    sub         x1,  x1,  x0      
+    sub         x1,  x1,  x0
     ldr         x2,  =.L_PERIPHERAL_PHYSICAL_START
     stp         x1, x2, [sp, #16 * 8]
 
@@ -482,7 +422,7 @@ _start:
     ldr     x1, =.L_LOWER_VIRTUAL_START
     ldr     x2, =.L_LOWER_VIRTUAL_END_EXCLUSIVE
     stp     x1, x2, [sp, #16 * 9]
-    
+
 
     //higher free page
     adr_load     x1, __bss_end_exclusive
@@ -503,8 +443,8 @@ _start:
 
     ret
 
-    
-    
+
+
 
 .L_qemu_print:
     ldr         x0, =.L_QEMU_CONSOLE
@@ -543,7 +483,7 @@ clear_memory_range:
 
 
 .section page_table, "aw", @nobits
-.p2align 12 
+.p2align 12
 .global l1_lower_page_table
 l1_lower_page_table:
     .space 4096, 0
@@ -561,7 +501,7 @@ l3_higher_page_table:
 
 
 .section stack, "aw", @nobits
-.p2align 12 
+.p2align 12
 .global initial_stack_guard_page
 initial_stack_guard_page:
     .space 4096, 0

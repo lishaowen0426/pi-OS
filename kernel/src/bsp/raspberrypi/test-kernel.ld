@@ -74,7 +74,7 @@ SECTIONS
     }:segment_data
 
 
-    .bss(NOLOAD) : ALIGN(PAGE_SIZE) 
+    .bss(NOLOAD) : ALIGN(PAGE_SIZE)
     {
         __bss_start = .;
         *(.bss*);
@@ -88,8 +88,9 @@ SECTIONS
 
     .page_table(NOLOAD) : ALIGN(PAGE_SIZE)
     {
-        __l1_page_table_start = .;
+        __page_table_start = .;
         *(page_table);
+        __page_table_end_exclusive = .;
     }: segment_table
 
 
