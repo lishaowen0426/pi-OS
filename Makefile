@@ -35,7 +35,7 @@ TARGET            = aarch64-unknown-none-softfloat
 KERNEL_BIN        = kernel8.img
 QEMU_BINARY       = qemu-system-aarch64
 QEMU_MACHINE_TYPE = raspi3b
-QEMU_RELEASE_ARGS = -serial stdio -display none  -machine $(QEMU_MACHINE_TYPE)      
+QEMU_RELEASE_ARGS = -serial stdio -display none  -d in_asm -machine $(QEMU_MACHINE_TYPE)
 QEMU_TEST_ARGS    = $(QEMU_RELEASE_ARGS) -semihosting
 OBJDUMP_BINARY    = aarch64-none-elf-objdump
 NM_BINARY         = aarch64-none-elf-nm
@@ -95,32 +95,32 @@ KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST)
 RUSTFLAGS = $(RUSTC_MISC_ARGS)                   \
     -C link-arg=--library-path=$(LD_SCRIPT_FOLDER) \
     -C link-arg=--script=$(KERNEL_LINKER_SCRIPT) \
-	--emit asm                                   
+	--emit asm
 
 RUSTFLAGS_TEST_UNIT = $(RUSTC_MISC_ARGS)                   \
     -C link-arg=--library-path=./target/$(TARGET)/  \
 	-C link-arg=--library=:test-boot.o \
-    -C link-arg=--script=$(TEST_KERNEL_LINKER_SCRIPT_PATH) 
+    -C link-arg=--script=$(TEST_KERNEL_LINKER_SCRIPT_PATH)
 
-RUSTFLAGS_DEBUG =  -C opt-level=0   -C debuginfo=2                               
+RUSTFLAGS_DEBUG =  -C opt-level=0   -C debuginfo=2
 
 RUSTFLAGS_PEDANTIC = $(RUSTFLAGS) \
 
 FEATURES      = --features bsp_$(BSP)
 COMPILER_ARGS = --target=$(TARGET) \
     $(FEATURES)                    \
-	--lib  
+	--lib
 
 
-##ifeq ($(PROFILE),release) 
+##ifeq ($(PROFILE),release)
 ##	COMPILER_ARGS += --release
 ##endif
 
-RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir 
-    
+RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir
+
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
-RUSTC_LIB_CMD = cargo rustc --verbose   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)  
+RUSTC_LIB_CMD = cargo rustc --verbose   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -202,7 +202,7 @@ qemu qemuasm qemuwait:
 else # QEMU is supported.
 
 
-qemuwait: QEMU_RELEASE_ARGS += -s -S  
+qemuwait: QEMU_RELEASE_ARGS += -s -S
 qemuwait: do_qemu
 
 qemu: do_qemu
@@ -211,7 +211,7 @@ do_qemu: FEATURES := --features build_qemu
 
 do_qemu: $(KERNEL_BIN)
 	$(call color_header, "Launching QEMU")
-	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN) 
+	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN)
 
 qemuasm: $(KERNEL_BIN)
 	$(call color_header, "Launching QEMU with ASM output")
@@ -235,11 +235,11 @@ clean:
 ##------------------------------------------------------------------------------
 readelf: $(KERNEL_ELF)
 	$(call color_header, "Launching readelf")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_ELF) 
+	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_ELF)
 
 readelf_asm: $(ASSEMBLED_BOOT)
 	$(call color_header, "Launching readelf for asm")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) -a $(ASSEMBLED_BOOT) 
+	@$(DOCKER_TOOLS) $(READELF_BINARY) -a $(ASSEMBLED_BOOT)
 
 ##------------------------------------------------------------------------------
 ## Run objdump
@@ -252,7 +252,7 @@ objdump: $(KERNEL_ELF)
 #objdump: $(KERNEL_ELF)
 #	$(call color_header, "Launching objdump")
 #	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) -d $(KERNEL_ELF) | rustfilt | less
-	
+
 ##------------------------------------------------------------------------------
 ## Run nm
 ##------------------------------------------------------------------------------
@@ -282,7 +282,7 @@ openocd:
 	@$(DOCKER_OPENOCD) openocd $(OPENOCD_ARG)
 
 
-jtagboot: 
+jtagboot:
 	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(JTAG_BOOT_IMAGE)
 
 test_unit: FEATURES := --features test_build --features bsp_rpi3
@@ -299,10 +299,10 @@ define KERNEL_TEST_RUNNER
 
 	echo $$TEST_BINARY
 
-	# $(DOCKER_TOOLS) $(READELF_BINARY) --headers $$TEST_ELF 
+	# $(DOCKER_TOOLS) $(READELF_BINARY) --headers $$TEST_ELF
 	# $(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $$TEST_ELF | sort | rustfilt
     $(OBJCOPY_CMD) $$TEST_ELF $$TEST_BINARY
-    $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS)  -kernel $$TEST_BINARY 
+    $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS)  -kernel $$TEST_BINARY
 endef
 
 export KERNEL_TEST_RUNNER
@@ -316,11 +316,11 @@ endef
 test_unit: $(TEST_ASSEMBLED_BOOT)
 	$(call color_header, "Compiling unit test(s) - $(BSP)")
 	$(call test_prepare)
-	RUSTFLAGS="$(RUSTFLAGS_TEST_UNIT)" $(TEST_CMD) 
+	RUSTFLAGS="$(RUSTFLAGS_TEST_UNIT)" $(TEST_CMD)
 
 
 
-$(KERNEL_LIB): $(KERNEL_ELF_DEPS) 
+$(KERNEL_LIB): $(KERNEL_ELF_DEPS)
 	@$(RUSTC_LIB_CMD)
 	$(call color_header, "Compiling kernel static lib - $(BSP) with profile - $(PROFILE)")
 
@@ -337,7 +337,7 @@ $(TEST_ASSEMBLED_BOOT): $(TEST_BOOT_ASM)
 $(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 	$(call color_header, "Linking kernel ELF - $(BSP)")
 	$(call color_header, "Output kernel ELF - $(KERNEL_ELF)")
-	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) $(KERNEL_ELF) 
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) $(KERNEL_ELF)
 
 $(KERNEL_BIN): $(KERNEL_ELF)
 	$(call color_header, "Generating stripped binary with kernel elf - $(KERNEL_ELF)")

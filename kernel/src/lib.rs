@@ -29,7 +29,6 @@
 #![reexport_test_harness_main = "test_main"]
 #![test_runner(crate::test_runner)]
 
-mod boot_const;
 mod bsp;
 mod console;
 mod cpu;
@@ -130,6 +129,10 @@ fn test_runner(tests: &[&test_types::UnitTest]) {
 pub unsafe fn kernel_main() -> ! {
     // exception::handling_init();
     // bsp::driver::qemu_bring_up_console();
+    println!(
+        "current exception level {}",
+        exception::current_privilege_level().1
+    );
     test_main();
 
     cpu::qemu_exit_success()

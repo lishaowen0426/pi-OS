@@ -197,19 +197,30 @@ pub trait AddressRange {
     fn pop_4K_back(&mut self) -> Option<Self::Address>;
     fn pop_2M_back(&mut self) -> Option<Self::Address>;
 
-    fn pop_4K_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+    fn pop_4K_at(&mut self, at: Self::Address) -> Option<(Self, Self::Address, Self)>
     where
         Self: Sized;
+
     fn pop_2M_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
     where
         Self: Sized;
+
+    fn is_4K_multiple(&self) -> bool;
+    fn is_2M_multiple(&self) -> bool;
 }
 
 macro_rules! impl_address_range {
     ($name: ident, $addr: ty) => {
         impl $name {
-            pub fn new(start: $addr, end: $addr) -> Self {
-                Self { start, end }
+            pub fn new<T>(start: T, end: T) -> Self
+            where
+                T: TryInto<$addr>,
+                <T as TryInto<$addr>>::Error: fmt::Debug,
+            {
+                Self {
+                    start: T::try_into(start).unwrap(),
+                    end: T::try_into(end).unwrap(),
+                }
             }
 
             pub fn count_4K(&self) -> Result<usize, ErrorCode> {
@@ -286,15 +297,61 @@ macro_rules! impl_address_range {
             where
                 Self: Sized,
             {
-                None
+                if addr < self.start {
+                    None
+                } else if addr + Self::Address::_4K > self.end {
+                    None
+                } else {
+                    Some((
+                        Self {
+                            start: self.start,
+                            end: addr,
+                        },
+                        addr,
+                        Self {
+                            start: addr + Self::Address::_4K,
+                            end: self.end,
+                        },
+                    ))
+                }
             }
             fn pop_2M_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
             where
                 Self: Sized,
             {
-                None
+                if addr < self.start {
+                    None
+                } else if addr + Self::Address::_2M > self.end {
+                    None
+                } else {
+                    Some((
+                        Self {
+                            start: self.start,
+                            end: addr,
+                        },
+                        addr,
+                        Self {
+                            start: addr + Self::Address::_2M,
+                            end: self.end,
+                        },
+                    ))
+                }
+            }
+            fn is_4K_multiple(&self) -> bool {
+                (self.end - self.start).is_4K_aligned()
+            }
+            fn is_2M_multiple(&self) -> bool {
+                (self.end - self.start).is_2M_aligned()
             }
         }
+
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                self.start == other.start && self.end == other.end
+            }
+        }
+
+        impl Eq for $name {}
     };
 }
 declare_address!(VirtualAddress, VaRange, usize, "{:#018x}");
@@ -612,10 +669,88 @@ impl VirtualAddress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bsp;
+    use crate::{bsp, println};
     #[allow(unused_imports)]
     use test_macros::kernel_test;
 
     #[kernel_test]
-    fn test_address_range() {}
+    fn test_address_range() {
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000;
+            let mut va_range = VaRange::new(start, end);
+            let first = va_range.pop_4K_front().unwrap();
+            assert_eq!(first, VirtualAddress::from(start));
+            assert_eq!(va_range, VaRange::new(start + 0x1000, end));
+
+            va_range.pop_4K_front().unwrap();
+            va_range.pop_4K_front().unwrap();
+            assert!(va_range.pop_4K_front().is_none());
+            assert_eq!(va_range, VaRange::new(end, end));
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000;
+            let mut va_range = VaRange::new(start, end);
+            assert_eq!(
+                va_range
+                    .pop_4K_at(VirtualAddress::from(start + 0x1000))
+                    .unwrap(),
+                (
+                    VaRange::new(start, start + 0x1000),
+                    VirtualAddress::from(start + 0x1000),
+                    VaRange::new(start + 0x2000, end)
+                )
+            );
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000;
+            let mut va_range = VaRange::new(start, end);
+            assert_eq!(
+                va_range.pop_4K_at(VirtualAddress::from(start)).unwrap(),
+                (
+                    VaRange::new(start, start),
+                    VirtualAddress::from(start),
+                    VaRange::new(start + 0x1000, end)
+                )
+            );
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000;
+            let mut va_range = VaRange::new(start, end);
+            assert_eq!(
+                va_range
+                    .pop_4K_at(VirtualAddress::from(start + 2 * 0x1000))
+                    .unwrap(),
+                (
+                    VaRange::new(start, start + 2 * 0x1000),
+                    VirtualAddress::from(start + 2 * 0x1000),
+                    VaRange::new(end, end)
+                )
+            );
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000;
+            let mut va_range = VaRange::new(start, end);
+            assert!(va_range
+                .pop_4K_at(VirtualAddress::from(start + 3 * 0x1000))
+                .is_none());
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000;
+            let mut va_range = VaRange::new(start, end);
+            assert!(va_range.is_4K_multiple());
+            assert!(!va_range.is_2M_multiple());
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 3 * 0x1000 + 0x500;
+            let mut va_range = VaRange::new(start, end);
+            assert!(!va_range.is_4K_multiple());
+        }
+    }
 }

@@ -1,4 +1,4 @@
- 
+
 .include "defines.s"
 /*load-time address, i.e., pc-relative*/
 .macro ADR_LOAD register, symbol
@@ -58,7 +58,7 @@ _start:
     b _start_rust
 
 
-    
+
 	// Infinitely wait for events (aka "park the core").
 .L_parking_loop:
 	wfe
@@ -90,7 +90,7 @@ clear_frame:
 .include "exception.s"
 
 .section page_table, "aw", @nobits
-.p2align 12 
+.p2align 12
 .global l1_page_table
 l1_page_table:
     .space 4096, 0
