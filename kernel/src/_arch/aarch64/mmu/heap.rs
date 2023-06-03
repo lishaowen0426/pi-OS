@@ -1,39 +1,43 @@
 use super::address::*;
-use crate::errno::ErrorCode;
+use crate::{errno::*, static_vector};
 use core::alloc::{GlobalAlloc, Layout};
 use spin::mutex::SpinMutex;
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
-#[derive(Default)]
+
+static_vector!(Free4KVec, VaRange, BACKEND_FREE_4K);
+static_vector!(Free2MVec, VaRange, BACKEND_FREE_2M);
+
 struct HeapBackend {
-    free_4k: [VaRange; BACKEND_FREE_4K],
-    free_2M: [VaRange; BACKEND_FREE_2M],
+    free_4K: Free4KVec,
+    free_2M: Free2MVec,
 }
-#[derive(Default)]
 struct HeapFrontend {}
 
-#[derive(Default)]
 struct UnsafeHeapAllocator {
-    backend: Option<HeapBackend>,
-    frontend: Option<HeapFrontend>,
+    backend: HeapBackend,
+    frontend: HeapFrontend,
 }
 
 impl UnsafeHeapAllocator {
     pub const fn new() -> Self {
         Self {
-            backend: None,
-            frontend: None,
+            backend: HeapBackend {
+                free_4K: Free4KVec::new(),
+                free_2M: Free2MVec::new(),
+            },
+            frontend: HeapFrontend {},
         }
     }
 
-    pub fn init(&mut self) -> Result<(), ErrorCode> {
-        self.backend = Some(Default::default());
-        self.frontend = Some(Default::default());
+    pub fn init(&mut self, va: VaRange) -> Result<(), ErrorCode> {
         Ok(())
     }
 
-    pub fn fill_backend_with(va: VaRange) {}
+    pub fn fill_backend_with(&mut self, va: VaRange) -> Result<(), ErrorCode> {
+        todo!()
+    }
 }
 
 pub struct HeapAllocator {
@@ -47,8 +51,8 @@ impl HeapAllocator {
         }
     }
 
-    pub fn init(&self) -> Result<(), ErrorCode> {
-        self.allocator.lock().init()
+    pub fn init(&self, va: VaRange) -> Result<(), ErrorCode> {
+        self.allocator.lock().init(va)
     }
 }
 
@@ -59,8 +63,8 @@ unsafe impl GlobalAlloc for HeapAllocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
 }
 
-pub fn init() -> Result<(), ErrorCode> {
-    HEAP_ALLOCATOR.init()
+pub fn init(va: VaRange) -> Result<(), ErrorCode> {
+    HEAP_ALLOCATOR.init(va)
 }
 
 #[global_allocator]

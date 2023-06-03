@@ -8,7 +8,7 @@ use core::{
 };
 
 macro_rules! declare_address {
-    ($name:ident, $name_range: ident, $tt:ty, $lit: literal $(,)?) => {
+    ($name:ident, $name_range: ident, $tt:ty  $(,)?) => {
         #[derive(Default, Eq, PartialEq, Ord, PartialOrd, Clone, Copy)]
         #[repr(transparent)]
         pub struct $name($tt);
@@ -18,51 +18,6 @@ macro_rules! declare_address {
         pub struct $name_range {
             start: $name,
             end: $name,
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, $lit, self.0)
-            }
-        }
-        impl fmt::LowerHex for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, $lit, self.0)
-            }
-        }
-        impl fmt::Display for $name_range {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{}  ->  {}", self.start, self.end)
-            }
-        }
-        impl fmt::Debug for $name_range {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{:?}  ->  {:?}", self.start, self.end)
-            }
-        }
-
-        impl Add for $name {
-            type Output = Self;
-            fn add(self, other: Self) -> Self {
-                Self::try_from(self.0.checked_add(other.0).unwrap()).unwrap()
-            }
-        }
-        impl Sub for $name {
-            type Output = Self;
-            fn sub(self, other: Self) -> Self {
-                Self::try_from(self.0.checked_sub(other.0).unwrap()).unwrap()
-            }
-        }
-
-        impl AddAssign for $name {
-            fn add_assign(&mut self, rhs: Self) {
-                *self = Self::try_from(self.0.checked_add(rhs.0).unwrap()).unwrap();
-            }
-        }
-        impl SubAssign for $name {
-            fn sub_assign(&mut self, rhs: Self) {
-                *self = Self::try_from(self.0.checked_sub(rhs.0).unwrap()).unwrap();
-            }
         }
     };
 }
@@ -157,6 +112,41 @@ macro_rules! impl_address {
                 Self((self.0 + alignment - 1) & align)
             }
         }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:#018x}", self.0)
+            }
+        }
+        impl fmt::LowerHex for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:#018x}", self.0)
+            }
+        }
+
+        impl Add for $name {
+            type Output = Self;
+            fn add(self, other: Self) -> Self {
+                Self::try_from(self.0.checked_add(other.0).unwrap()).unwrap()
+            }
+        }
+        impl Sub for $name {
+            type Output = Self;
+            fn sub(self, other: Self) -> Self {
+                Self::try_from(self.0.checked_sub(other.0).unwrap()).unwrap()
+            }
+        }
+
+        impl AddAssign for $name {
+            fn add_assign(&mut self, rhs: Self) {
+                *self = Self::try_from(self.0.checked_add(rhs.0).unwrap()).unwrap();
+            }
+        }
+        impl SubAssign for $name {
+            fn sub_assign(&mut self, rhs: Self) {
+                *self = Self::try_from(self.0.checked_sub(rhs.0).unwrap()).unwrap();
+            }
+        }
     };
 }
 
@@ -175,6 +165,11 @@ macro_rules! impl_number {
                 } else {
                     None
                 }
+            }
+        }
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}", self.0)
             }
         }
     };
@@ -208,9 +203,13 @@ pub trait AddressRange {
     fn is_4K_multiple(&self) -> bool;
     fn is_2M_multiple(&self) -> bool;
 
+    fn size_in_bytes(&self) -> usize;
     fn split(self, front_percentage: usize) -> (Self, Self)
     where
         Self: Sized;
+
+    fn is_4K(&self) -> bool;
+    fn is_2M(&self) -> bool;
 }
 
 macro_rules! impl_address_range {
@@ -235,16 +234,15 @@ macro_rules! impl_address_range {
                     Ok(diff.value() / <$addr>::_4K.value())
                 }
             }
-
-            pub fn size_in_bytes(&self) -> usize {
-                (self.end - self.start).value()
+        }
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}  ->  {}", self.start, self.end)
             }
-
-            pub fn is_4K(&self) -> bool {
-                self.size_in_bytes() == <$addr>::_4K.value()
-            }
-            pub fn is_2M(&self) -> bool {
-                self.size_in_bytes() == <$addr>::_2M.value()
+        }
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:?}  ->  {:?}", self.start, self.end)
             }
         }
 
@@ -361,6 +359,10 @@ macro_rules! impl_address_range {
                 (self.end - self.start).is_2M_aligned()
             }
 
+            fn size_in_bytes(&self) -> usize {
+                (self.end - self.start).value()
+            }
+
             fn split(self, front_percentage: usize) -> (Self, Self)
             where
                 Self: Sized,
@@ -376,6 +378,12 @@ macro_rules! impl_address_range {
                 };
                 (front, back)
             }
+            fn is_4K(&self) -> bool {
+                self.size_in_bytes() == Self::Address::_4K.value()
+            }
+            fn is_2M(&self) -> bool {
+                self.size_in_bytes() == Self::Address::_2M.value()
+            }
         }
 
         impl PartialEq for $name {
@@ -387,10 +395,10 @@ macro_rules! impl_address_range {
         impl Eq for $name {}
     };
 }
-declare_address!(VirtualAddress, VaRange, usize, "{:#018x}");
-declare_address!(PhysicalAddress, PaRange, usize, "{:#018x}");
-declare_address!(PageNumber, PageRange, usize, "{}");
-declare_address!(FrameNumber, FrameRange, usize, "{}");
+declare_address!(VirtualAddress, VaRange, usize);
+declare_address!(PhysicalAddress, PaRange, usize);
+declare_address!(PageNumber, PageRange, usize);
+declare_address!(FrameNumber, FrameRange, usize);
 
 impl_address!(VirtualAddress);
 impl_address!(PhysicalAddress);

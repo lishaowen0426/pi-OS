@@ -37,4 +37,5 @@ errno_decl!(
     EBOUND => "Out of bound",
     EFRAME => "Cannot allocate frame",
     EINIT  => "Not initialized properly",
+    EPARAM => "Invalid parameter",
 );

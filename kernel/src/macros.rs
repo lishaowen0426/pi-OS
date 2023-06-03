@@ -1,3 +1,5 @@
+use crate::errno::*;
+
 #[macro_export]
 macro_rules! rpi4 {
     ($($i:item)*) => {
@@ -152,4 +154,86 @@ macro_rules! write_raw {
     ($width:ty, $asm_reg_name:tt, $asm_width:tt) => {
         __write_raw!($width, "mov", $asm_reg_name, $asm_width);
     };
+}
+
+#[macro_export]
+macro_rules! static_vector {
+    ($name: ident, $ty: ty, $count: expr) => {
+        pub struct $name {
+            arr: [Option<$ty>; $count],
+            next: usize,
+            capacity: usize,
+        }
+
+        impl $name {
+            const INIT: Option<$ty> = None;
+            pub const fn new() -> Self {
+                Self {
+                    arr: [Self::INIT; $count],
+                    next: 0,
+                    capacity: $count,
+                }
+            }
+
+            pub fn push(&mut self, item: $ty) -> Result<(), ErrorCode> {
+                if self.full() {
+                    Err(EBOUND)
+                } else {
+                    self.arr[self.next] = Some(item);
+                    self.next = self.next + 1;
+                    Ok(())
+                }
+            }
+
+            pub fn pop(&mut self) -> Option<$ty> {
+                if self.empty() {
+                    None
+                } else {
+                    self.next = self.next - 1;
+                    let popped = self.arr[self.next].take();
+                    popped
+                }
+            }
+
+            pub fn size(&self) -> usize {
+                self.next
+            }
+            pub fn empty(&self) -> bool {
+                self.size() == 0
+            }
+
+            pub fn full(&self) -> bool {
+                self.size() == self.capacity
+            }
+        }
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_macros::kernel_test;
+
+    const ENTRIES: usize = 8;
+    #[derive(Default)]
+    struct A {}
+    #[kernel_test]
+    fn test_static_vector() {
+        static_vector!(A_vec, A, ENTRIES);
+        let mut arr = A_vec::new();
+        assert!(arr.empty());
+
+        for _ in 0..ENTRIES {
+            arr.push(Default::default());
+        }
+
+        assert!(arr.full());
+        arr.pop().unwrap();
+        assert_eq!(arr.size(), ENTRIES - 1);
+
+        for _ in 0..arr.size() {
+            arr.pop().unwrap();
+        }
+        assert!(arr.empty());
+    }
 }
