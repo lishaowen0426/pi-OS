@@ -120,8 +120,8 @@ _start:
 
     //pi3 peripheral
     adr_load            x0, l2_lower_page_table
-    ldr            x1, =.L_PI3_PERIPHERAL_PHYSICAL_START
-    ldr           x2, =.L_PI3_PERIPHERAL_PHYSICAL_END
+    ldr            	x1, =.L_PERIPHERAL_PHYSICAL_START
+    ldr           	x2, =.L_PERIPHERAL_PHYSICAL_END
     ldr                 x3, =.L_RWDEVICE
     bl  .L_fill_l2_table
 

@@ -44,7 +44,7 @@ mod utils;
 
 use aarch64_cpu::{asm, registers::*};
 use core::fmt;
-use memory::*;
+use memory::address::*;
 use tock_registers::interfaces::Writeable;
 // 32 bytes * 4 + 16 + 16 + 16
 #[repr(C)]
@@ -135,6 +135,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     );
     println!("Boot info:");
     println!("{}", boot_info);
+
     test_main();
 
     cpu::qemu_exit_success()

@@ -36,4 +36,5 @@ errno_decl!(
     ETYPE => "Wrong Type",
     EBOUND => "Out of bound",
     EFRAME => "Cannot allocate frame",
+    EINIT  => "Not initialized properly",
 );

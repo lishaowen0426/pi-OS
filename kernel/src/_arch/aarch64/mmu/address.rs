@@ -13,7 +13,7 @@ macro_rules! declare_address {
         #[repr(transparent)]
         pub struct $name($tt);
 
-        #[derive(Clone, Copy)]
+        #[derive(Clone, Copy, Default)]
         #[repr(C)]
         pub struct $name_range {
             start: $name,
@@ -116,43 +116,43 @@ macro_rules! impl_address {
                 (self.0 & (!(alignment - 1))) == self.0
             }
 
-            pub fn align_to_4K_up(&self) -> Self {
+            pub fn align_to_4K_up(self) -> Self {
                 Self(self.0 & config::ALIGN_4K)
             }
-            pub fn align_to_16K_up(&self) -> Self {
+            pub fn align_to_16K_up(self) -> Self {
                 Self(self.0 & config::ALIGN_16K)
             }
-            pub fn align_to_64K_up(&self) -> Self {
+            pub fn align_to_64K_up(self) -> Self {
                 Self(self.0 & config::ALIGN_64K)
             }
-            pub fn align_to_2M_up(&self) -> Self {
+            pub fn align_to_2M_up(self) -> Self {
                 Self(self.0 & config::ALIGN_2M)
             }
-            pub fn align_to_1G_up(&self) -> Self {
+            pub fn align_to_1G_up(self) -> Self {
                 Self(self.0 & config::ALIGN_1G)
             }
 
-            pub fn align_up(&self, alignment: usize) -> Self {
+            pub fn align_up(self, alignment: usize) -> Self {
                 let align = !(alignment - 1);
                 Self(self.0 & align)
             }
 
-            pub fn align_to_4K_down(&self) -> Self {
+            pub fn align_to_4K_down(self) -> Self {
                 Self((self.0 + config::MASK_4K) & config::ALIGN_4K)
             }
-            pub fn align_to_16K_down(&self) -> Self {
+            pub fn align_to_16K_down(self) -> Self {
                 Self((self.0 + config::MASK_16K) & config::ALIGN_16K)
             }
-            pub fn align_to_64K_down(&self) -> Self {
+            pub fn align_to_64K_down(self) -> Self {
                 Self((self.0 + config::MASK_64K) & config::ALIGN_64K)
             }
-            pub fn align_to_2M_down(&self) -> Self {
+            pub fn align_to_2M_down(self) -> Self {
                 Self((self.0 + config::MASK_2M) & config::ALIGN_2M)
             }
-            pub fn align_to_1G_down(&self) -> Self {
+            pub fn align_to_1G_down(self) -> Self {
                 Self((self.0 + config::MASK_1G) & config::ALIGN_1G)
             }
-            pub fn align_down(&self, alignment: usize) -> Self {
+            pub fn align_down(self, alignment: usize) -> Self {
                 let align = !(alignment - 1);
                 Self((self.0 + alignment - 1) & align)
             }
@@ -188,8 +188,8 @@ pub trait AddressRange {
     fn empty(&self) -> bool;
 
     // start is aligned down, end is aligned up
-    fn align_to_4K(&self) -> Self;
-    fn align_to_2M(&self) -> Self;
+    fn align_to_4K(&mut self);
+    fn align_to_2M(&mut self);
 
     fn pop_4K_front(&mut self) -> Option<Self::Address>;
     fn pop_2M_front(&mut self) -> Option<Self::Address>;
@@ -197,16 +197,20 @@ pub trait AddressRange {
     fn pop_4K_back(&mut self) -> Option<Self::Address>;
     fn pop_2M_back(&mut self) -> Option<Self::Address>;
 
-    fn pop_4K_at(&mut self, at: Self::Address) -> Option<(Self, Self::Address, Self)>
+    fn pop_4K_at(self, at: Self::Address) -> Option<(Self, Self::Address, Self)>
     where
         Self: Sized;
 
-    fn pop_2M_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+    fn pop_2M_at(self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
     where
         Self: Sized;
 
     fn is_4K_multiple(&self) -> bool;
     fn is_2M_multiple(&self) -> bool;
+
+    fn split(self, front_percentage: usize) -> (Self, Self)
+    where
+        Self: Sized;
 }
 
 macro_rules! impl_address_range {
@@ -228,8 +232,19 @@ macro_rules! impl_address_range {
                 if !diff.is_4K_aligned() {
                     Err(EALIGN)
                 } else {
-                    Ok(diff.value() / 4096)
+                    Ok(diff.value() / <$addr>::_4K.value())
                 }
+            }
+
+            pub fn size_in_bytes(&self) -> usize {
+                (self.end - self.start).value()
+            }
+
+            pub fn is_4K(&self) -> bool {
+                self.size_in_bytes() == <$addr>::_4K.value()
+            }
+            pub fn is_2M(&self) -> bool {
+                self.size_in_bytes() == <$addr>::_2M.value()
             }
         }
 
@@ -248,11 +263,13 @@ macro_rules! impl_address_range {
             }
 
             // start is aligned down, end is aligned up
-            fn align_to_4K(&self) -> Self {
-                Self::new(self.start.align_to_4K_down(), self.end.align_to_4K_up())
+            fn align_to_4K(&mut self) {
+                self.start = self.start.align_to_4K_down();
+                self.end = self.end.align_to_4K_up();
             }
-            fn align_to_2M(&self) -> Self {
-                Self::new(self.start.align_to_2M_down(), self.end.align_to_2M_up())
+            fn align_to_2M(&mut self) {
+                self.start = self.start.align_to_2M_down();
+                self.end = self.end.align_to_2M_up();
             }
 
             fn pop_4K_front(&mut self) -> Option<Self::Address> {
@@ -293,7 +310,7 @@ macro_rules! impl_address_range {
                 }
             }
 
-            fn pop_4K_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+            fn pop_4K_at(self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
             where
                 Self: Sized,
             {
@@ -315,7 +332,7 @@ macro_rules! impl_address_range {
                     ))
                 }
             }
-            fn pop_2M_at(&mut self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
+            fn pop_2M_at(self, addr: Self::Address) -> Option<(Self, Self::Address, Self)>
             where
                 Self: Sized,
             {
@@ -342,6 +359,22 @@ macro_rules! impl_address_range {
             }
             fn is_2M_multiple(&self) -> bool {
                 (self.end - self.start).is_2M_aligned()
+            }
+
+            fn split(self, front_percentage: usize) -> (Self, Self)
+            where
+                Self: Sized,
+            {
+                let front_size = self.size_in_bytes() * front_percentage / 100;
+                let front = Self {
+                    start: self.start,
+                    end: self.start + Self::Address::try_from(front_size).unwrap(),
+                };
+                let back = Self {
+                    start: front.end,
+                    end: self.end,
+                };
+                (front, back)
             }
         }
 
@@ -669,7 +702,6 @@ impl VirtualAddress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bsp, println};
     #[allow(unused_imports)]
     use test_macros::kernel_test;
 
@@ -751,6 +783,14 @@ mod tests {
             let end: usize = start + 3 * 0x1000 + 0x500;
             let mut va_range = VaRange::new(start, end);
             assert!(!va_range.is_4K_multiple());
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 10 * 0x200000;
+            let mut va_range = VaRange::new(start, end);
+            let (first, second) = va_range.split(40);
+            assert_eq!(first, VaRange::new(start, start + 4 * 0x200000));
+            assert_eq!(second, VaRange::new(start + 4 * 0x200000, end));
         }
     }
 }

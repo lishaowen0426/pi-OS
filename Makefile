@@ -120,7 +120,8 @@ RUSTC_ARGS = -- -Z mir-opt-level=0 --emit mir
 
 
 RUSTC_CMD   = cargo rustc   $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
-RUSTC_LIB_CMD = cargo rustc --verbose   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)
+RUSTC_LIB_CMD = cargo rustc    --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)
+RUSTCHECK_CMD = cargo check   --manifest-path $(KERNEL_MANIFEST) $(COMPILER_ARGS)
 DOC_CMD     = cargo doc $(COMPILER_ARGS)
 TEST_CMD    = cargo test $(COMPILER_ARGS) --manifest-path $(KERNEL_MANIFEST)
 CLIPPY_CMD  = cargo clippy $(COMPILER_ARGS)
@@ -318,6 +319,9 @@ test_unit: $(TEST_ASSEMBLED_BOOT)
 	$(call test_prepare)
 	RUSTFLAGS="$(RUSTFLAGS_TEST_UNIT)" $(TEST_CMD)
 
+check:
+	$(call color_header, "Cargo checking....")
+	@$(RUSTCHECK_CMD)
 
 
 $(KERNEL_LIB): $(KERNEL_ELF_DEPS)
@@ -332,7 +336,7 @@ $(ASSEMBLED_BOOT): $(BOOT_ASM)
 $(TEST_ASSEMBLED_BOOT): $(TEST_BOOT_ASM)
 	$(call color_header, "Assembling test-boot.s")
 	@echo $(TEST_ASSEMBLED_BOOT)
-	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(TEST_ASSEMBLED_BOOT) $(TEST_BOOT_ASM)
+	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS) --defsym QEMU_MODE=1  -o $(TEST_ASSEMBLED_BOOT) $(TEST_BOOT_ASM)
 
 $(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 	$(call color_header, "Linking kernel ELF - $(BSP)")
