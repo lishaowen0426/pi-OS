@@ -24,14 +24,16 @@ struct UnsafeFrameAllocator {
 }
 
 impl UnsafeFrameAllocator {
-    pub fn new() -> Self {
-        Self {
+    pub fn new(boot_info: &BootInfo) -> Self {
+        let mut frame_allocator = Self {
             free_4k: LinkedList::new(RangeListAdaptor::new()),
             free_2m: LinkedList::new(RangeListAdaptor::new()),
-        }
+        };
+        frame_allocator.init(boot_info);
+        frame_allocator
     }
 
-    pub fn fill(&mut self, boot_info: &BootInfo) -> (usize, usize) {
+    fn init(&mut self, boot_info: &BootInfo) {
         let (mut huge_range, mut small_range) = boot_info.free_frame.split(HUGE_PAGE_RATIO);
         small_range.align_to_4K();
         huge_range.align_to_2M();
@@ -43,7 +45,6 @@ impl UnsafeFrameAllocator {
             link: LinkedListLink::new(),
             range: huge_range,
         }));
-        (small_range.size_in_bytes(), huge_range.size_in_bytes())
     }
     pub fn allocate_4K(&mut self) -> Option<PhysicalAddress> {
         None
@@ -58,13 +59,10 @@ pub struct FrameAllocator {
 }
 
 impl FrameAllocator {
-    pub fn new() -> Self {
+    pub fn new(boot_info: &BootInfo) -> Self {
         Self {
-            allocator: SpinMutex::new(UnsafeFrameAllocator::new()),
+            allocator: SpinMutex::new(UnsafeFrameAllocator::new(boot_info)),
         }
-    }
-    pub fn fill(&self, boot_info: &BootInfo) -> (usize, usize) {
-        self.allocator.lock().fill(boot_info)
     }
 
     pub fn allocate_4K(&self) -> Option<PhysicalAddress> {
@@ -75,9 +73,84 @@ impl FrameAllocator {
     }
 }
 
-pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
-    FRAME_ALLOCATOR.call_once(|| FrameAllocator::new());
-    Ok(())
+pub static FRAME_ALLOCATOR: Once<FrameAllocator> = Once::new();
+
+struct UnsafePageAllocator {
+    lower_free_4k: LinkedList<RangeListAdaptor<VaRange>>,
+    lower_free_2m: LinkedList<RangeListAdaptor<VaRange>>, // each PaRange is a multiple of 4k/2m
+    higher_free_4k: LinkedList<RangeListAdaptor<VaRange>>,
+    higher_free_2m: LinkedList<RangeListAdaptor<VaRange>>, // each PaRange is a multiple of 4k/2m
 }
 
-pub static FRAME_ALLOCATOR: Once<FrameAllocator> = Once::new();
+impl UnsafePageAllocator {
+    pub fn new(boot_info: &BootInfo) -> Self {
+        let mut page_allocator = Self {
+            lower_free_4k: LinkedList::new(RangeListAdaptor::new()),
+            lower_free_2m: LinkedList::new(RangeListAdaptor::new()),
+            higher_free_4k: LinkedList::new(RangeListAdaptor::new()),
+            higher_free_2m: LinkedList::new(RangeListAdaptor::new()),
+        };
+        page_allocator.init(boot_info);
+        page_allocator
+    }
+
+    fn init(&mut self, boot_info: &BootInfo) {
+        let (mut lower_huge_range, mut lower_small_range) =
+            boot_info.lower_free_page.split(HUGE_PAGE_RATIO);
+        lower_small_range.align_to_4K();
+        lower_huge_range.align_to_2M();
+        self.lower_free_4k.push_back(Box::new(AddressRangeNode {
+            link: LinkedListLink::new(),
+            range: lower_small_range,
+        }));
+        self.lower_free_2m.push_back(Box::new(AddressRangeNode {
+            link: LinkedListLink::new(),
+            range: lower_huge_range,
+        }));
+        let (mut higher_huge_range, mut higher_small_range) =
+            boot_info.higher_free_page.split(HUGE_PAGE_RATIO);
+        higher_small_range.align_to_4K();
+        higher_huge_range.align_to_2M();
+        self.higher_free_4k.push_back(Box::new(AddressRangeNode {
+            link: LinkedListLink::new(),
+            range: higher_small_range,
+        }));
+        self.higher_free_2m.push_back(Box::new(AddressRangeNode {
+            link: LinkedListLink::new(),
+            range: higher_huge_range,
+        }));
+    }
+    pub fn allocate_4K(&mut self) -> Option<VirtualAddress> {
+        None
+    }
+    pub fn allocate_2M(&mut self) -> Option<VirtualAddress> {
+        None
+    }
+}
+
+pub struct PageAllocator {
+    allocator: SpinMutex<UnsafePageAllocator>,
+}
+
+impl PageAllocator {
+    pub fn new(boot_info: &BootInfo) -> Self {
+        Self {
+            allocator: SpinMutex::new(UnsafePageAllocator::new(boot_info)),
+        }
+    }
+
+    pub fn allocate_4K(&self) -> Option<VirtualAddress> {
+        self.allocator.lock().allocate_4K()
+    }
+    pub fn allocate_2M(&self) -> Option<VirtualAddress> {
+        self.allocator.lock().allocate_2M()
+    }
+}
+
+pub static PAGE_ALLOCATOR: Once<PageAllocator> = Once::new();
+
+pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
+    FRAME_ALLOCATOR.call_once(|| FrameAllocator::new(boot_info));
+    PAGE_ALLOCATOR.call_once(|| PageAllocator::new(boot_info));
+    Ok(())
+}

@@ -104,11 +104,18 @@ _start:
 
 
 
-    //code + rodata
+    //code
     adr_load            x0, l3_lower_page_table
     adr_load            x1, __code_start
-    adr_load            x2, __data_end_exclusive
+    adr_load            x2, __code_end_exclusive
     ldr                 x3, =.L_XNORMAL
+    bl .L_fill_l3_table
+
+    //rodata
+    adr_load            x0, l3_lower_page_table
+    adr_load            x1, __data_start
+    adr_load            x2, __data_end_exclusive
+    ldr                 x3, =.L_RONORMAL
     bl .L_fill_l3_table
 
     //bss
@@ -198,7 +205,7 @@ _start:
     sub     sp, sp, #176
     //code_and_ro
     adr_load    x1, __code_start
-    adr_load    x2, __code_end_exclusive
+    adr_load    x2, __data_end_exclusive
     stp         x1, x2, [sp, #16 * 0]
     stp         x1, x2, [sp, #16 * 1]
 
@@ -226,11 +233,11 @@ _start:
     ldr         x2,  =.L_PERIPHERAL_PHYSICAL_START
     stp         x1, x2, [sp, #16 * 8]
 
-    //lower free page
-    stp     	x1, x2, [sp, #16 * 9]
+    //lower free page, empty
+    stp     	x2, x2, [sp, #16 * 9]
 
     //higher free page
-    stp     	x2, x2, [sp, #16 * 10]
+    stp     	x1, x2, [sp, #16 * 10]
 
    mov        x0, sp
 

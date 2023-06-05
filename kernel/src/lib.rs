@@ -47,6 +47,7 @@ use core::fmt;
 use memory::address::*;
 use tock_registers::interfaces::Writeable;
 // 32 bytes * 4 + 16 + 16 + 16
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct BootInfo {
     pub code_and_ro: Mapped,
@@ -89,7 +90,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
     memory::init(boot_info).unwrap();
-    println!(" Boot info:");
+    println!("Boot info:");
     println!("{}", boot_info);
     println_1!(
         "Free 4K frame: {}",
@@ -135,6 +136,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     );
     println!("Boot info:");
     println!("{}", boot_info);
+    memory::init(boot_info).unwrap();
 
     test_main();
 

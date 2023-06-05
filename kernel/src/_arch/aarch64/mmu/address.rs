@@ -210,6 +210,8 @@ pub trait AddressRange {
 
     fn is_4K(&self) -> bool;
     fn is_2M(&self) -> bool;
+    fn set_start(&mut self, s: Self::Address);
+    fn set_end(&mut self, s: Self::Address);
 }
 
 macro_rules! impl_address_range {
@@ -254,6 +256,13 @@ macro_rules! impl_address_range {
             }
             fn end(&self) -> Self::Address {
                 self.end
+            }
+
+            fn set_start(&mut self, s: $addr) {
+                self.start = s;
+            }
+            fn set_end(&mut self, e: $addr) {
+                self.end = e;
             }
 
             fn empty(&self) -> bool {
@@ -408,6 +417,7 @@ impl_address_range!(VaRange, VirtualAddress);
 impl_address_range!(PaRange, PhysicalAddress);
 
 // 32 bytes
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Mapped {
     va: VaRange,

@@ -1,7 +1,7 @@
 use super::address::*;
-use crate::{errno::*, static_vector};
+use crate::{errno::*, println, static_vector};
 use core::alloc::{GlobalAlloc, Layout};
-use spin::mutex::SpinMutex;
+use spin::{mutex::SpinMutex, once::Once};
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
@@ -20,6 +20,18 @@ struct UnsafeHeapAllocator {
     frontend: HeapFrontend,
 }
 
+impl HeapBackend {
+    fn insert(&mut self, va: VaRange) -> Result<(), ErrorCode> {
+        if va.is_4K() {
+            self.free_4K.push(va)
+        } else if va.is_2M() {
+            self.free_2M.push(va)
+        } else {
+            Err(EPARAM)
+        }
+    }
+}
+
 impl UnsafeHeapAllocator {
     pub const fn new() -> Self {
         Self {
@@ -32,11 +44,11 @@ impl UnsafeHeapAllocator {
     }
 
     pub fn init(&mut self, va: VaRange) -> Result<(), ErrorCode> {
-        Ok(())
+        self.backend.insert(va)
     }
 
-    pub fn fill_backend_with(&mut self, va: VaRange) -> Result<(), ErrorCode> {
-        todo!()
+    pub fn alloc(&mut self, layout: Layout) -> *mut u8 {
+        core::ptr::null_mut()
     }
 }
 
@@ -56,16 +68,26 @@ impl HeapAllocator {
     }
 }
 
-unsafe impl GlobalAlloc for HeapAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        todo!()
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
-}
-
 pub fn init(va: VaRange) -> Result<(), ErrorCode> {
-    HEAP_ALLOCATOR.init(va)
+    HEAP_ALLOCATOR.call_once(|| HeapAllocator::new());
+    HEAP_ALLOCATOR.get().unwrap().init(va)
+}
+pub static HEAP_ALLOCATOR: Once<HeapAllocator> = Once::new();
+
+pub struct Heap {}
+
+impl Heap {
+    pub const fn new() -> Self {
+        Self {}
+    }
 }
 
 #[global_allocator]
-pub static HEAP_ALLOCATOR: HeapAllocator = HeapAllocator::new();
+pub static HEAP: Heap = Heap::new();
+
+unsafe impl GlobalAlloc for Heap {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
+}

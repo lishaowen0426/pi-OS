@@ -103,9 +103,9 @@ impl UnsafeTranslationTable<Level1> {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-        sz: BlockSize,
+        sz: &BlockSize,
     ) -> Result<(), ErrorCode> {
-        match sz {
+        match *sz {
             BlockSize::_4K => self.map_4K(va, pa, mt),
             BlockSize::_2M => self.map_2M(va, pa, mt),
             BlockSize::_1G => self.map_1G(va, pa, mt),

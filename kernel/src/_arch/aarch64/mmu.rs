@@ -84,11 +84,35 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     });
 
     //  give 2m va and pa to the heap allocator so that it can distribute memory to the page and
-    //   frame allocator
-    let mut lower_free_page_range = boot_info.lower_free_page;
-    let mut higher_free_page_range = boot_info.higher_free_page;
-    println!("higher page range: {}", higher_free_page_range);
-    let mut free_frame = boot_info.free_frame;
+    //  frame allocator
+    //  note that we cannot allocate new page table at the moment since the frame allocator is not
+    // ready to use
+
+    // the 2m memory we use to initialize the heap allocator is kernel base + l1[0] + l2[1]
+    // this wastes some memory, but for simplicity...
+    let pa = boot_info.free_frame.start().align_to_2M_down();
+    let va = VirtualAddress::from(
+        config::KERNEL_BASE | (0 << config::L1_INDEX_SHIFT) | (1 << config::L2_INDEX_SHIFT),
+    );
+
+    println!("Allocated to heap allocator..");
+    println!("va: {:?}, pa: {}", va, pa);
+
+    MMU.get().unwrap().map(va, pa, RWNORMAL, MAP_2M);
+    unsafe {
+        core::ptr::read_volatile(va.value() as *mut u64);
+    }
+    heap::init(VaRange::new(va, va + VirtualAddress::from(0x200000))).unwrap();
+    let mut boot_info_copy = boot_info.clone();
+    boot_info_copy
+        .free_frame
+        .set_start(pa + PhysicalAddress::try_from(0x200000).unwrap());
+    boot_info_copy
+        .higher_free_page
+        .set_start(va + VirtualAddress::from(0x200000));
+    println!("Updated boot info {}", boot_info_copy);
+
+    allocator::init(&boot_info_copy).unwrap();
 
     Ok(())
 }
@@ -99,6 +123,10 @@ pub enum BlockSize {
     _2M,
     _1G,
 }
+
+pub static MAP_4K: &BlockSize = &BlockSize::_4K;
+pub static MAP_2M: &BlockSize = &BlockSize::_2M;
+pub static MAP_1G: &BlockSize = &BlockSize::_1G;
 
 pub struct MemoryManagementUnit {
     lower_l1: SpinMutex<UnsafeTranslationTable<Level1>>,
@@ -122,11 +150,12 @@ impl MemoryManagementUnit {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
+        sz: &BlockSize,
     ) -> Result<(), ErrorCode> {
         if va.is_lower() {
-            self.lower_l1.lock().map(va, pa, mt, BlockSize::_4K)
+            self.lower_l1.lock().map(va, pa, mt, sz)
         } else {
-            self.higher_l1.lock().map(va, pa, mt, BlockSize::_4K)
+            self.higher_l1.lock().map(va, pa, mt, sz)
         }
     }
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {

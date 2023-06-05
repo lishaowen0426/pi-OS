@@ -43,7 +43,10 @@ pub const L3_INDEX_SHIFT: usize = 12;
 pub const L2_INDEX_SHIFT: usize = L3_INDEX_SHIFT + INDEX_BITS;
 pub const L1_INDEX_SHIFT: usize = L2_INDEX_SHIFT + INDEX_BITS;
 
+#[cfg(not(feature = "build_qemu"))]
 pub const KERNEL_BASE: usize = 0xFFFFFF8000000000;
+#[cfg(feature = "build_qemu")]
+pub const KERNEL_BASE: usize = 0;
 
 pub const RECURSIVE_L1_INDEX: usize = ENTRIES_PER_TABLE - 1;
 pub const LOWER_L1_VIRTUAL_ADDRESS: usize = (RECURSIVE_L1_INDEX << L1_INDEX_SHIFT)
