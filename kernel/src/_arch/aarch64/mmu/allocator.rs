@@ -3,7 +3,7 @@ use super::{address::*, heap::*};
 use crate::{
     errno::*,
     memory::{BlockSize, MemoryRegion, BLOCK_2M, BLOCK_4K},
-    BootInfo,
+    println, BootInfo,
 };
 use alloc::boxed::Box;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink};
@@ -37,10 +37,18 @@ impl UnsafeFrameAllocator {
         let (mut huge_range, mut small_range) = boot_info.free_frame.split(HUGE_PAGE_RATIO);
         small_range.align_to_4K();
         huge_range.align_to_2M();
+        println!(
+            "box new, size {}",
+            core::mem::size_of::<AddressRangeNode<PaRange>>()
+        );
         self.free_4k.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: small_range,
         }));
+        println!(
+            "box new, size {}",
+            core::mem::size_of::<AddressRangeNode<PaRange>>()
+        );
         self.free_2m.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: huge_range,
@@ -107,10 +115,18 @@ impl UnsafePageAllocator {
             boot_info.lower_free_page.split(HUGE_PAGE_RATIO);
         lower_small_range.align_to_4K();
         lower_huge_range.align_to_2M();
+        println!(
+            "box new, size {}",
+            core::mem::size_of::<AddressRangeNode<VaRange>>()
+        );
         self.lower_free_4k.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: lower_small_range,
         }));
+        println!(
+            "box new, size {}",
+            core::mem::size_of::<AddressRangeNode<VaRange>>()
+        );
         self.lower_free_2m.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: lower_huge_range,
@@ -119,10 +135,18 @@ impl UnsafePageAllocator {
             boot_info.higher_free_page.split(HUGE_PAGE_RATIO);
         higher_small_range.align_to_4K();
         higher_huge_range.align_to_2M();
+        println!(
+            "box new, size {}",
+            core::mem::size_of::<AddressRangeNode<VaRange>>()
+        );
         self.higher_free_4k.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: higher_small_range,
         }));
+        println!(
+            "box new, size {}",
+            core::mem::size_of::<AddressRangeNode<VaRange>>()
+        );
         self.higher_free_2m.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: higher_huge_range,

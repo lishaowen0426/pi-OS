@@ -232,6 +232,7 @@ macro_rules! static_vector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::ops::Deref;
     use test_macros::kernel_test;
 
     const ENTRIES: usize = 8;

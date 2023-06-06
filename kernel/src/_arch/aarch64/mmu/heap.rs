@@ -86,7 +86,11 @@ impl SizeClassAllocator {
         }
     }
 
+    pub fn refill(&mut self, va_range: VaRange) -> Result<(), ErrorCode> {
+        self.pages.push(va_range)
+    }
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+        println!("sz = {}, {:?}", 1 << (self.size_class as u8), layout);
         for p in self.pages.iter() {
             if let Some(vr) = p.as_ref() {
                 let obj_page: &mut ObjectPage4K =
@@ -172,13 +176,14 @@ impl HeapFrontend {
         }
     }
 
-    pub fn alloc(&mut self, layout: Layout) -> *mut u8 {
+    pub fn refill(&mut self, va_range: VaRange, layout: Layout) -> Result<(), ErrorCode> {
+        let sc = Self::pick_size_class(layout.size() as u64) as usize;
+        self.sc_allocator[sc - 3].refill(va_range)
+    }
+
+    pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
         let sz = Self::pick_size_class(layout.size() as u64) as usize;
-        if let Some(ptr) = self.sc_allocator[sz - 3].alloc(layout) {
-            ptr
-        } else {
-            core::ptr::null_mut()
-        }
+        self.sc_allocator[sz - 3].alloc(layout)
     }
 }
 
@@ -197,8 +202,15 @@ impl UnsafeHeapAllocator {
         self.backend.insert(va)
     }
 
-    pub fn alloc(&mut self, layout: Layout) -> *mut u8 {
-        core::ptr::null_mut()
+    pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+        if let Some(ptr) = self.frontend.alloc(layout) {
+            Some(ptr)
+        } else {
+            let va_range_4k = self.backend.allocate_4K_free().ok()?;
+            self.frontend.refill(va_range_4k, layout).ok()?;
+
+            self.frontend.alloc(layout)
+        }
     }
 }
 
@@ -215,6 +227,13 @@ impl HeapAllocator {
 
     pub fn init(&self, va: VaRange) -> Result<(), ErrorCode> {
         self.allocator.lock().init(va)
+    }
+    fn alloc(&self, layout: Layout) -> *mut u8 {
+        if let Some(ptr) = self.allocator.lock().alloc(layout) {
+            ptr
+        } else {
+            core::ptr::null_mut()
+        }
     }
 }
 
@@ -237,8 +256,7 @@ pub static HEAP: Heap = Heap::new();
 
 unsafe impl GlobalAlloc for Heap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        println!("layout {:?}", layout);
-        core::ptr::null_mut()
+        HEAP_ALLOCATOR.get().unwrap().alloc(layout)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
 }

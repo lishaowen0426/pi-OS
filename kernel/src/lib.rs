@@ -136,7 +136,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     );
     println!("Boot info:");
     println!("{}", boot_info);
-    // memory::init(boot_info).unwrap();
+    memory::init(boot_info).unwrap();
 
     test_main();
 

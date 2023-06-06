@@ -102,7 +102,7 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     unsafe {
         core::ptr::read_volatile(va.value() as *mut u64);
     }
-    heap::init(VaRange::new(va, va + VirtualAddress::from(0x200000))).unwrap();
+    heap::init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
     let mut boot_info_copy = boot_info.clone();
     boot_info_copy
         .free_frame
