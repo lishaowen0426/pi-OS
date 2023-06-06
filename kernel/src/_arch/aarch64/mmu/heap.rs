@@ -6,8 +6,20 @@ use spin::{mutex::SpinMutex, once::Once};
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
 
-static_vector!(Free4KVec, VaRange, BACKEND_FREE_4K);
-static_vector!(Free2MVec, VaRange, BACKEND_FREE_2M);
+#[repr(C)]
+struct ObjectPage4K {
+    data: [u8; ObjectPage4K::SIZE - ObjectPage4K::METADATA_SIZE],
+
+    allocated: [u64; 8], // 1 means the location is allocated
+}
+
+impl ObjectPage4K {
+    const SIZE: usize = 4096;
+    const METADATA_SIZE: usize = core::mem::size_of::<[u64; 8]>();
+}
+
+static_vector!(Free4KVec, VirtualAddress, BACKEND_FREE_4K);
+static_vector!(Free2MVec, VirtualAddress, BACKEND_FREE_2M);
 
 struct HeapBackend {
     free_4K: Free4KVec,
@@ -23,9 +35,9 @@ struct UnsafeHeapAllocator {
 impl HeapBackend {
     fn insert(&mut self, va: VaRange) -> Result<(), ErrorCode> {
         if va.is_4K() {
-            self.free_4K.push(va)
+            self.free_4K.push(va.start())
         } else if va.is_2M() {
-            self.free_2M.push(va)
+            self.free_2M.push(va.start())
         } else {
             Err(EPARAM)
         }

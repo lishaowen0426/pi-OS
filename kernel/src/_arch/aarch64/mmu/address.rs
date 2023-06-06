@@ -420,8 +420,8 @@ impl_address_range!(PaRange, PhysicalAddress);
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Mapped {
-    va: VaRange,
-    pa: PaRange,
+    pub va: VaRange,
+    pub pa: PaRange,
 }
 
 impl fmt::Display for Mapped {

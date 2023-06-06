@@ -1,15 +1,15 @@
 extern crate alloc;
 use super::{address::*, heap::*};
-use crate::{errno::*, BootInfo};
+use crate::{
+    errno::*,
+    memory::{BlockSize, MemoryRegion, BLOCK_2M, BLOCK_4K},
+    BootInfo,
+};
 use alloc::boxed::Box;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink};
 use spin::{mutex::SpinMutex, once::Once};
 
 const HUGE_PAGE_RATIO: usize = 40; // in percentage
-
-extern "C" {
-    fn clear_memory_range(start: usize, end_exclusive: usize);
-}
 
 struct AddressRangeNode<T: AddressRange> {
     link: LinkedListLink,
@@ -65,11 +65,19 @@ impl FrameAllocator {
         }
     }
 
-    pub fn allocate_4K(&self) -> Option<PhysicalAddress> {
+    fn allocate_4K(&self) -> Option<PhysicalAddress> {
         self.allocator.lock().allocate_4K()
     }
-    pub fn allocate_2M(&self) -> Option<PhysicalAddress> {
+    fn allocate_2M(&self) -> Option<PhysicalAddress> {
         self.allocator.lock().allocate_2M()
+    }
+
+    pub fn allocate(&self, sz: &BlockSize) -> Option<PhysicalAddress> {
+        match *sz {
+            BlockSize::_4K => self.allocate_4K(),
+            BlockSize::_2M => self.allocate_2M(),
+            _ => None,
+        }
     }
 }
 
@@ -120,10 +128,10 @@ impl UnsafePageAllocator {
             range: higher_huge_range,
         }));
     }
-    pub fn allocate_4K(&mut self) -> Option<VirtualAddress> {
+    pub fn allocate_4K(&mut self, region: &MemoryRegion) -> Option<VirtualAddress> {
         None
     }
-    pub fn allocate_2M(&mut self) -> Option<VirtualAddress> {
+    pub fn allocate_2M(&mut self, region: &MemoryRegion) -> Option<VirtualAddress> {
         None
     }
 }
@@ -139,11 +147,19 @@ impl PageAllocator {
         }
     }
 
-    pub fn allocate_4K(&self) -> Option<VirtualAddress> {
-        self.allocator.lock().allocate_4K()
+    fn allocate_4K(&self, region: &MemoryRegion) -> Option<VirtualAddress> {
+        self.allocator.lock().allocate_4K(region)
     }
-    pub fn allocate_2M(&self) -> Option<VirtualAddress> {
-        self.allocator.lock().allocate_2M()
+    fn allocate_2M(&self, region: &MemoryRegion) -> Option<VirtualAddress> {
+        self.allocator.lock().allocate_2M(region)
+    }
+
+    pub fn allocate(&self, sz: &BlockSize, region: &MemoryRegion) -> Option<VirtualAddress> {
+        match *sz {
+            BlockSize::_4K => self.allocate_4K(region),
+            BlockSize::_2M => self.allocate_2M(region),
+            _ => None,
+        }
     }
 }
 

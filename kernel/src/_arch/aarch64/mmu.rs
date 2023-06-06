@@ -28,6 +28,9 @@ use cache::*;
 use translation_entry::*;
 use translation_table::*;
 
+extern "C" {
+    fn clear_memory_range(start: usize, end_exclusive: usize);
+}
 fn config_registers_el1() -> Result<(), ErrorCode> {
     // let t0sz: u64 = (64 - (PHYSICAL_MEMORY_END_INCLUSIVE + 1).trailing_zeros()) as u64; //
     // currently just identity map
@@ -98,7 +101,7 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     println!("Allocated to heap allocator..");
     println!("va: {:?}, pa: {}", va, pa);
 
-    MMU.get().unwrap().map(va, pa, RWNORMAL, MAP_2M);
+    MMU.get().unwrap().map(va, pa, RWNORMAL, BLOCK_2M);
     unsafe {
         core::ptr::read_volatile(va.value() as *mut u64);
     }
@@ -124,9 +127,17 @@ pub enum BlockSize {
     _1G,
 }
 
-pub static MAP_4K: &BlockSize = &BlockSize::_4K;
-pub static MAP_2M: &BlockSize = &BlockSize::_2M;
-pub static MAP_1G: &BlockSize = &BlockSize::_1G;
+pub static BLOCK_4K: &BlockSize = &BlockSize::_4K;
+pub static BLOCK_2M: &BlockSize = &BlockSize::_2M;
+pub static BLOCK_1G: &BlockSize = &BlockSize::_1G;
+
+pub enum MemoryRegion {
+    Higher,
+    Lower,
+}
+
+pub static HIGHER_PAGE: &MemoryRegion = &MemoryRegion::Higher;
+pub static LOWER_PAGE: &MemoryRegion = &MemoryRegion::Lower;
 
 pub struct MemoryManagementUnit {
     lower_l1: SpinMutex<UnsafeTranslationTable<Level1>>,
@@ -145,7 +156,7 @@ impl MemoryManagementUnit {
         }
     }
 
-    pub fn map(
+    fn map(
         &self,
         va: VirtualAddress,
         pa: PhysicalAddress,
@@ -163,6 +174,42 @@ impl MemoryManagementUnit {
             self.lower_l1.lock().translate(va)
         } else {
             self.higher_l1.lock().translate(va)
+        }
+    }
+    // kzalloc will zero the allocated memory
+    pub fn kzalloc(
+        &self,
+        sz: &BlockSize,
+        mt: &MemoryType,
+        region: &MemoryRegion,
+    ) -> Option<Mapped> {
+        let va = allocator::PAGE_ALLOCATOR
+            .get()
+            .unwrap()
+            .allocate(sz, region)?;
+        let pa = allocator::FRAME_ALLOCATOR.get().unwrap().allocate(sz)?;
+        self.map(va, pa, mt, sz).ok()?;
+
+        match *sz {
+            BlockSize::_4K => {
+                unsafe {
+                    clear_memory_range(va.value(), (va + VirtualAddress::_4K).value());
+                }
+                Some(Mapped {
+                    va: VaRange::new(va, va + VirtualAddress::_4K),
+                    pa: PaRange::new(pa, pa + PhysicalAddress::_4K),
+                })
+            }
+            BlockSize::_2M => {
+                unsafe {
+                    clear_memory_range(va.value(), (va + VirtualAddress::_2M).value());
+                }
+                Some(Mapped {
+                    va: VaRange::new(va, va + VirtualAddress::_2M),
+                    pa: PaRange::new(pa, pa + PhysicalAddress::_2M),
+                })
+            }
+            _ => None,
         }
     }
 }
