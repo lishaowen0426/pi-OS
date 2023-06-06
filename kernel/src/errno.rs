@@ -36,6 +36,9 @@ errno_decl!(
     ETYPE => "Wrong Type",
     EBOUND => "Out of bound",
     EFRAME => "Cannot allocate frame",
+    EPAGE => "Cannot allocate page",
     EINIT  => "Not initialized properly",
     EPARAM => "Invalid parameter",
+    ESUPPORTED => "Not supported",
+    EUNKNOWN => "Unknown reason",
 );

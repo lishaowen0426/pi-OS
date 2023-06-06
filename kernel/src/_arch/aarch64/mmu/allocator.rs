@@ -46,11 +46,11 @@ impl UnsafeFrameAllocator {
             range: huge_range,
         }));
     }
-    pub fn allocate_4K(&mut self) -> Option<PhysicalAddress> {
-        None
+    pub fn allocate_4K(&mut self) -> Result<PhysicalAddress, ErrorCode> {
+        todo!()
     }
-    pub fn allocate_2M(&mut self) -> Option<PhysicalAddress> {
-        None
+    pub fn allocate_2M(&mut self) -> Result<PhysicalAddress, ErrorCode> {
+        todo!()
     }
 }
 
@@ -65,18 +65,18 @@ impl FrameAllocator {
         }
     }
 
-    fn allocate_4K(&self) -> Option<PhysicalAddress> {
+    fn allocate_4K(&self) -> Result<PhysicalAddress, ErrorCode> {
         self.allocator.lock().allocate_4K()
     }
-    fn allocate_2M(&self) -> Option<PhysicalAddress> {
+    fn allocate_2M(&self) -> Result<PhysicalAddress, ErrorCode> {
         self.allocator.lock().allocate_2M()
     }
 
-    pub fn allocate(&self, sz: &BlockSize) -> Option<PhysicalAddress> {
+    pub fn allocate(&self, sz: &BlockSize) -> Result<PhysicalAddress, ErrorCode> {
         match *sz {
             BlockSize::_4K => self.allocate_4K(),
             BlockSize::_2M => self.allocate_2M(),
-            _ => None,
+            _ => Err(ESUPPORTED),
         }
     }
 }
@@ -128,11 +128,11 @@ impl UnsafePageAllocator {
             range: higher_huge_range,
         }));
     }
-    pub fn allocate_4K(&mut self, region: &MemoryRegion) -> Option<VirtualAddress> {
-        None
+    pub fn allocate_4K(&mut self, region: &MemoryRegion) -> Result<VirtualAddress, ErrorCode> {
+        todo!()
     }
-    pub fn allocate_2M(&mut self, region: &MemoryRegion) -> Option<VirtualAddress> {
-        None
+    pub fn allocate_2M(&mut self, region: &MemoryRegion) -> Result<VirtualAddress, ErrorCode> {
+        todo!()
     }
 }
 
@@ -147,18 +147,22 @@ impl PageAllocator {
         }
     }
 
-    fn allocate_4K(&self, region: &MemoryRegion) -> Option<VirtualAddress> {
+    fn allocate_4K(&self, region: &MemoryRegion) -> Result<VirtualAddress, ErrorCode> {
         self.allocator.lock().allocate_4K(region)
     }
-    fn allocate_2M(&self, region: &MemoryRegion) -> Option<VirtualAddress> {
+    fn allocate_2M(&self, region: &MemoryRegion) -> Result<VirtualAddress, ErrorCode> {
         self.allocator.lock().allocate_2M(region)
     }
 
-    pub fn allocate(&self, sz: &BlockSize, region: &MemoryRegion) -> Option<VirtualAddress> {
+    pub fn allocate(
+        &self,
+        sz: &BlockSize,
+        region: &MemoryRegion,
+    ) -> Result<VirtualAddress, ErrorCode> {
         match *sz {
             BlockSize::_4K => self.allocate_4K(region),
             BlockSize::_2M => self.allocate_2M(region),
-            _ => None,
+            _ => Err(ESUPPORTED),
         }
     }
 }

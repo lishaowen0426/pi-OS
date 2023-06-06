@@ -77,6 +77,17 @@ macro_rules! type_enum {
                 }
             }
         }
+        impl From<u32> for $name {
+            fn from(val: u32) -> Self{
+                match val{
+                    $(
+                      $dis  => Self::$variant,
+
+                    )*
+                    _ => Self::Undefined,
+                }
+            }
+        }
     };
 }
 
@@ -158,8 +169,8 @@ macro_rules! write_raw {
 
 #[macro_export]
 macro_rules! static_vector {
-    ($name: ident, $ty: ty, $count: expr) => {
-        pub struct $name {
+    ($vis: vis $name: ident, $ty: ty, $count: expr) => {
+        $vis struct $name {
             arr: [Option<$ty>; $count],
             next: usize,
             capacity: usize,
@@ -206,6 +217,15 @@ macro_rules! static_vector {
                 self.size() == self.capacity
             }
         }
+
+        impl Deref for $name {
+            type Target = [Option<$ty>; $count];
+            fn deref(&self) -> &Self::Target{
+                &self.arr
+            }
+        }
+
+
     };
 }
 

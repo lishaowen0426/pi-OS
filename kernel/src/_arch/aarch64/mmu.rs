@@ -1,7 +1,4 @@
-use crate::{
-    errno::{ErrorCode, EAGAIN},
-    println, BootInfo,
-};
+use crate::{errno::*, println, BootInfo};
 use aarch64_cpu::registers::*;
 use spin::{mutex::SpinMutex, once::Once};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -169,7 +166,7 @@ impl MemoryManagementUnit {
             self.higher_l1.lock().map(va, pa, mt, sz)
         }
     }
-    pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
+    fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         if va.is_lower() {
             self.lower_l1.lock().translate(va)
         } else {
@@ -182,20 +179,20 @@ impl MemoryManagementUnit {
         sz: &BlockSize,
         mt: &MemoryType,
         region: &MemoryRegion,
-    ) -> Option<Mapped> {
+    ) -> Result<Mapped, ErrorCode> {
         let va = allocator::PAGE_ALLOCATOR
             .get()
             .unwrap()
             .allocate(sz, region)?;
         let pa = allocator::FRAME_ALLOCATOR.get().unwrap().allocate(sz)?;
-        self.map(va, pa, mt, sz).ok()?;
+        self.map(va, pa, mt, sz)?;
 
         match *sz {
             BlockSize::_4K => {
                 unsafe {
                     clear_memory_range(va.value(), (va + VirtualAddress::_4K).value());
                 }
-                Some(Mapped {
+                Ok(Mapped {
                     va: VaRange::new(va, va + VirtualAddress::_4K),
                     pa: PaRange::new(pa, pa + PhysicalAddress::_4K),
                 })
@@ -204,12 +201,12 @@ impl MemoryManagementUnit {
                 unsafe {
                     clear_memory_range(va.value(), (va + VirtualAddress::_2M).value());
                 }
-                Some(Mapped {
+                Ok(Mapped {
                     va: VaRange::new(va, va + VirtualAddress::_2M),
                     pa: PaRange::new(pa, pa + PhysicalAddress::_2M),
                 })
             }
-            _ => None,
+            _ => Err(ESUPPORTED),
         }
     }
 }

@@ -36,8 +36,8 @@ macro_rules! impl_address {
             }
             pub fn set_offset<T>(&mut self, offset: T)
             where
-                T: TryInto<usize>,
-                <T as TryInto<usize>>::Error: fmt::Debug,
+                T: TryInto<u64>,
+                <T as TryInto<u64>>::Error: fmt::Debug,
             {
                 self.0
                     .set_bits(config::OFFSET_RANGE, offset.try_into().unwrap());
@@ -591,24 +591,24 @@ impl VirtualAddress {
 
     pub fn set_level1<T>(&mut self, idx: T) -> &mut Self
     where
-        T: TryInto<usize>,
-        <T as TryInto<usize>>::Error: fmt::Debug,
+        T: TryInto<u64>,
+        <T as TryInto<u64>>::Error: fmt::Debug,
     {
         self.0.set_bits(config::L1_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_level2<T>(&mut self, idx: T) -> &mut Self
     where
-        T: TryInto<usize>,
-        <T as TryInto<usize>>::Error: fmt::Debug,
+        T: TryInto<u64>,
+        <T as TryInto<u64>>::Error: fmt::Debug,
     {
         self.0.set_bits(config::L2_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_level3<T>(&mut self, idx: T) -> &mut Self
     where
-        T: TryInto<usize>,
-        <T as TryInto<usize>>::Error: fmt::Debug,
+        T: TryInto<u64>,
+        <T as TryInto<u64>>::Error: fmt::Debug,
     {
         self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
         self

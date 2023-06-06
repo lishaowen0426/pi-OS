@@ -154,11 +154,8 @@ impl UnsafeTranslationTable<Level1> {
             Descriptor::INVALID => {
                 l1_entry = l1_entry.set_table()?;
                 l1_entry.set_attributes(TABLE_PAGE)?;
-                let allocated_frame_addr: PhysicalAddress = FRAME_ALLOCATOR
-                    .get()
-                    .unwrap()
-                    .allocate(BLOCK_4K)
-                    .ok_or(EFRAME)?;
+                let allocated_frame_addr: PhysicalAddress =
+                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?;
                 l1_entry.set_address(allocated_frame_addr)?;
                 self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
 
@@ -179,11 +176,8 @@ impl UnsafeTranslationTable<Level1> {
                 l2_entry = l2_entry.set_table()?;
                 l2_entry.set_attributes(TABLE_PAGE)?;
 
-                let allocated_frame_addr: PhysicalAddress = FRAME_ALLOCATOR
-                    .get()
-                    .unwrap()
-                    .allocate(BLOCK_4K)
-                    .ok_or(EFRAME)?;
+                let allocated_frame_addr: PhysicalAddress =
+                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?;
                 l2_entry.set_address(allocated_frame_addr)?;
                 l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry))?;
 
