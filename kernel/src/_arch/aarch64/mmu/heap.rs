@@ -5,21 +5,29 @@ use core::{
     fmt,
     ops::Deref,
 };
+use intrusive_collections::linked_list::AtomicLinkOps;
 use spin::{mutex::SpinMutex, once::Once};
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
 const OBJECT_PAGE_PER_SIZE_CLASS: usize = 8;
 
-#[repr(C)]
-struct ObjectPage4K {
-    data: [u8; ObjectPage4K::SIZE - ObjectPage4K::METADATA_SIZE],
+type AllocationMap = [u64; 8];
 
-    allocated: [u64; 8], // 1 means the location is allocated
+#[repr(C)]
+struct ObjectPage<const SIZE: usize>
+where
+    [(); SIZE - core::mem::size_of::<AllocationMap>()]:,
+{
+    data: [u8; SIZE - core::mem::size_of::<AllocationMap>()],
+
+    allocated: AllocationMap, // 1 means the location is allocated
 }
 
-impl ObjectPage4K {
-    const SIZE: usize = 4096;
+impl<const SIZE: usize> ObjectPage<SIZE>
+where
+    [(); SIZE - core::mem::size_of::<AllocationMap>()]:,
+{
     const METADATA_SIZE: usize = core::mem::size_of::<[u64; 8]>();
 
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
@@ -47,6 +55,9 @@ impl ObjectPage4K {
         }
     }
 }
+
+type ObjectPage4K = ObjectPage<0x1000>;
+type ObjectPage2M = ObjectPage<0x200000>;
 
 static_vector!(Free4KVec, VaRange, BACKEND_FREE_4K);
 static_vector!(Free2MVec, VaRange, BACKEND_FREE_2M);
