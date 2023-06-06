@@ -34,15 +34,13 @@ macro_rules! impl_address {
             pub fn offset(&self) -> usize {
                 (self.0 >> config::OFFSET_SHIFT) & config::OFFSET_MASK
             }
-            pub fn set_offset<T>(&self, offset: T) -> Self
+            pub fn set_offset<T>(&mut self, offset: T)
             where
                 T: TryInto<usize>,
                 <T as TryInto<usize>>::Error: fmt::Debug,
             {
-                Self(
-                    self.0
-                        .set_bits(config::OFFSET_RANGE, offset.try_into().unwrap()),
-                )
+                self.0
+                    .set_bits(config::OFFSET_RANGE, offset.try_into().unwrap());
             }
 
             pub fn as_const_ptr<T>(&self) -> *const T {
@@ -596,7 +594,7 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0 = self.0.set_bits(config::L1_RANGE, idx.try_into().unwrap());
+        self.0.set_bits(config::L1_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_level2<T>(&mut self, idx: T) -> &mut Self
@@ -604,7 +602,7 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0 = self.0.set_bits(config::L2_RANGE, idx.try_into().unwrap());
+        self.0.set_bits(config::L2_RANGE, idx.try_into().unwrap());
         self
     }
     pub fn set_level3<T>(&mut self, idx: T) -> &mut Self
@@ -612,7 +610,7 @@ impl VirtualAddress {
         T: TryInto<usize>,
         <T as TryInto<usize>>::Error: fmt::Debug,
     {
-        self.0 = self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
+        self.0.set_bits(config::L3_RANGE, idx.try_into().unwrap());
         self
     }
 

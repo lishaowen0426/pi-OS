@@ -81,22 +81,25 @@ impl UnsafeTranslationTable<Level1> {
                         let l3_entry = l3_table[va.level3()].get();
                         match l3_entry {
                             Descriptor::PageEntry(_) => {
-                                let pa = l3_entry.get_address().unwrap();
-                                Some(pa.set_offset(va.offset()))
+                                let mut pa = l3_entry.get_address().unwrap();
+                                pa.set_offset(va.offset());
+                                Some(pa)
                             }
                             _ => None,
                         }
                     }
                     Descriptor::L2BlockEntry(_) => {
-                        let pa = l2_entry.get_address().unwrap();
-                        Some(pa.set_offset(va.offset()))
+                        let mut pa = l2_entry.get_address().unwrap();
+                        pa.set_offset(va.offset());
+                        Some(pa)
                     }
                     _ => None,
                 }
             }
             Descriptor::L1BlockEntry(_) => {
-                let pa = l1_entry.get_address().unwrap();
-                Some(pa.set_offset(va.offset()))
+                let mut pa = l1_entry.get_address().unwrap();
+                pa.set_offset(va.offset());
+                Some(pa)
             }
             _ => None,
         }
