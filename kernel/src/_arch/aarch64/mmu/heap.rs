@@ -199,7 +199,8 @@ impl HeapFrontend {
 }
 
 impl UnsafeHeapAllocator {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
+        println!("flag: 4");
         Self {
             backend: HeapBackend {
                 free_4K: Free4KVec::new(),
@@ -230,7 +231,8 @@ pub struct HeapAllocator {
 }
 
 impl HeapAllocator {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
+        println!("flag: 2");
         Self {
             allocator: SpinMutex::new(UnsafeHeapAllocator::new()),
         }
@@ -249,11 +251,22 @@ impl HeapAllocator {
 }
 
 pub fn init(va: VaRange) -> Result<(), ErrorCode> {
-    HEAP_ALLOCATOR.call_once(|| HeapAllocator::new());
-    HEAP_ALLOCATOR.get().unwrap().init(va)
+    println!("flag: 333");
+    BACKEND_HEAP.call_once(|| HeapBackend {
+        free_4K: Free4KVec::new(),
+        free_2M: Free2MVec::new(),
+    });
+    FRONTEND_HEAP.call_once(|| HeapFrontend::new());
+    println!("flag: 444");
+    // HEAP_ALLOCATOR.call_once(|| HeapAllocator::new());
+    println!("flag: 1");
+    // HEAP_ALLOCATOR.get().unwrap().init(va)
+    Ok(())
 }
 pub static HEAP_ALLOCATOR: Once<HeapAllocator> = Once::new();
 
+static BACKEND_HEAP: Once<HeapBackend> = Once::new();
+static FRONTEND_HEAP: Once<HeapFrontend> = Once::new();
 pub struct Heap {}
 
 impl Heap {

@@ -55,7 +55,7 @@ ifeq ($(BSP),rpi3)
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a53
 else ifeq ($(BSP),rpi4)
 	AS_ARGS           = -mcpu=cortex-a72 -I $(ASM_SEARCH_PATH)
-    OPENOCD_ARG       = -f /openocd/c232hm-ddhsl-0.cfg -f /openocd/rpi4.cfg
+    OPENOCD_ARG       = -f ./docker/rustembedded-osdev-utils/c232hm-ddhsl-0.cfg -f ./docker/rustembedded-osdev-utils/rpi4.cfg
     JTAG_BOOT_IMAGE   = ./X1_JTAG_boot/jtag_boot_rpi4.img
     RUSTC_MISC_ARGS   = -C target-cpu=cortex-a72
 endif
@@ -276,11 +276,11 @@ do_chainboot : $(KERNEL_BIN)
 
 gdb: $(KERNEL_BIN)
 	$(call color_header, "Launching GDB")
-	@$(DOCKER_GDB) gdb-multiarch -q $(KERNEL_ELF)
+	@gdb  $(KERNEL_ELF)
 
 openocd:
 	$(call color_header, "Launching OpenOCD")
-	@$(DOCKER_OPENOCD) openocd $(OPENOCD_ARG)
+	@openocd $(OPENOCD_ARG)
 
 
 jtagboot:
