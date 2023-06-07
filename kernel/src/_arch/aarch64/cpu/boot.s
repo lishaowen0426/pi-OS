@@ -246,7 +246,7 @@ _start:
 
 
 .L_map_higher_half:
-    mov                 x6, lr      // save the link register
+    mov                 x7, lr      // save the link register
 
     adr_load            x0, l1_higher_page_table
 
@@ -302,23 +302,26 @@ _start:
 
     //fill higher l3 with double stack + stack
     adr_load           x0, l3_higher_page_table
-    adr_load           x1, initial_double_stack_top
-    adr_load           x2, initial_stack_bottom
-    ldr                x3, =.L_DOUBLE_STACK_TOP_L3_INDEX
-    ldr                x4, =.L_RWNORMAL
+    adr_load           x1, initial_stack_bottom // start
+    adr_load           x2, initial_double_stack_top //end
+
+    ldr                x3, =.L_INITIAL_STACK_SIZE
+    add		       x3, x3, #1  //add the double stack
+    mov                x4, #512
+    sub                x4, x4, x3
+    ldr                x5, =.L_RWNORMAL
 
 2:
-    make_page_entry    x5, x1, x4
-    str                x5, [x0, x3, LSL #3]
-    sub                x1,  x1, #0x1000
-    sub                x3,  x3, #1
+    make_page_entry    x6, x1, x5
+    str                x6, [x0, x4, LSL #3]
+    add                x1,  x1, #0x1000
+    add                x4,  x4, #1
     cmp                x1,   x2
-    b.gt               2b
+    b.lt               2b
 
 
 
-
-    mov lr, x6
+    mov lr, x7
     ret
 
 
@@ -403,14 +406,20 @@ _start:
     stp         x3, x4, [sp, #16 * 3]
 
     //stack
-    ldr         x2, =.L_STACK_TOP_VIRTUAL
+    ldr         x1, =.L_STACK_BOTTOM_VIRTUAL
+    ldr         x2, =.L_STACK_BOTTOM_VIRTUAL
+    ldr		x3, =.L_INITIAL_STACK_SIZE
+1:
+    add		x2, x2, #0x1000
+    sub		x3, x3, #1
+    cmp		x3, xzr
+    b.gt	1b
+    stp         x1, x2, [sp, #16 * 4]
+
     adr_load    x3, initial_stack_bottom
     adr_load    x4, initial_stack_top
-    sub         x5, x4, x3
-    sub         x1, x2, x5  //x1 holds stack bottom
     sub         x3,  x3,  x0
     sub         x4,  x4,  x0
-    stp         x1, x2, [sp, #16 * 4]
     stp         x3, x4, [sp, #16 * 5]
 
     //peripheral
@@ -442,15 +451,8 @@ _start:
 .else
     adr_load     x1, __bss_end_exclusive
 .endif
-    ldr          x2, =.L_STACK_TOP_VIRTUAL
-    ldr          x3, =.L_INITIAL_STACK_SIZE
-    add          x3, x3, #1     //add stack guard
-    mov          x4, #0x1000
-1:
-    sub          x2, x2, x4
-    sub          x3, x3, #1
-    cmp          x3, xzr
-    b.gt         1b
+    ldr          x2, =.L_STACK_BOTTOM_VIRTUAL
+    sub		 x2, x2, #0x1000 //minus the stack guard
 
     stp     x1, x2, [sp, #16 * 10]
 

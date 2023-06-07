@@ -195,6 +195,8 @@ pub static PAGE_ALLOCATOR: Once<PageAllocator> = Once::new();
 
 pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     FRAME_ALLOCATOR.call_once(|| FrameAllocator::new(boot_info));
+    println!("flag: 1");
     PAGE_ALLOCATOR.call_once(|| PageAllocator::new(boot_info));
+    println!("flag: 2");
     Ok(())
 }

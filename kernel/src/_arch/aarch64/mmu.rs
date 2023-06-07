@@ -99,22 +99,21 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     println!("va: {:?}, pa: {}", va, pa);
 
     MMU.get().unwrap().map(va, pa, RWNORMAL, BLOCK_4K).unwrap();
-    // let l3 = 0x8f000 as *const u64;
-    // unsafe {
-    // println!("using lower address");
-    // let e = core::ptr::read_volatile(l3.offset((va.level3() - 1) as isize));
-    // println!("address = {:#018x}", ((e >> 12) << 12) & ((1 << 48) - 1));
-    // println!("e {:#066b}", e);
-    // let e = core::ptr::read_volatile(l3.offset((va.level3()) as isize));
-    // println!("address = {:#018x}", ((e >> 12) << 12) & ((1 << 48) - 1));
-    // println!("e {:#066b}", e);
-    // }
+    // let l3 = 0x90000 as *const u64;
+    unsafe {
+        // println!("using lower address");
+        // let e = core::ptr::read_volatile(l3.offset((509) as isize));
+        // println!("address = {:#018x}", ((e >> 12) << 12) & ((1 << 48) - 1));
+        // println!("e {:#066b}", e);
+        // let e = core::ptr::read_volatile(l3.offset((va.level3()) as isize));
+        // println!("address = {:#018x}", ((e >> 12) << 12) & ((1 << 48) - 1));
+        // println!("e {:#066b}", e);
+    }
     unsafe {
         core::ptr::read_volatile(va.value() as *mut u64);
     }
     println!(" map success");
     heap::heap_init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
-
     println!(" Updated boot info {}", boot_info_copy);
 
     allocator::init(&boot_info_copy).unwrap();
