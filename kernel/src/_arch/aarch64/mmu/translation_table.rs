@@ -191,6 +191,10 @@ impl UnsafeTranslationTable<Level1> {
             _ => None,
         }
         .ok_or(ETYPE)?;
+        println!(
+            "l3 vable address {:?}",
+            VirtualAddress::from(Self::l3_table_address(va))
+        );
 
         let mut l3_entry: Descriptor = l3_table[va.level3()].get();
         match l3_entry {
@@ -202,6 +206,7 @@ impl UnsafeTranslationTable<Level1> {
             }
             _ => return Err(ETYPE),
         };
+        println!("l3 entry {}", l3_table[va.level3()].get());
         Ok(())
     }
     fn map_2M(

@@ -83,34 +83,29 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
         )
     });
 
-    //  give 2m va and pa to the heap allocator so that it can distribute memory to the page and
+    //  give 4k va and pa to the heap allocator so that it can distribute memory to the page and
     //  frame allocator
     //  note that we cannot allocate new page table at the moment since the frame allocator is not
     // ready to use
 
-    // the 2m memory we use to initialize the heap allocator is kernel base + l1[0] + l2[1]
-    // this wastes some memory, but for simplicity...
-    let pa = boot_info.free_frame.start().align_to_2M_down();
-    let va = VirtualAddress::from(
-        config::KERNEL_BASE | (0 << config::L1_INDEX_SHIFT) | (1 << config::L2_INDEX_SHIFT),
-    );
+    let mut boot_info_copy = *boot_info; // make a copy of boot info for later update
+    boot_info_copy.free_frame.align_to_4K();
+    boot_info_copy.higher_free_page.align_to_4K();
+
+    let pa = boot_info_copy.free_frame.pop_4K_front().unwrap();
+    let va = boot_info_copy.higher_free_page.pop_4K_front().unwrap();
 
     println!("Allocated to heap allocator..");
     println!("va: {:?}, pa: {}", va, pa);
 
-    MMU.get().unwrap().map(va, pa, RWNORMAL, BLOCK_2M);
+    MMU.get().unwrap().map(va, pa, RWNORMAL, BLOCK_4K);
     unsafe {
         core::ptr::read_volatile(va.value() as *mut u64);
     }
+    println!("map success");
     heap::init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
-    let mut boot_info_copy = boot_info.clone();
-    boot_info_copy
-        .free_frame
-        .set_start(pa + PhysicalAddress::try_from(0x200000).unwrap());
-    boot_info_copy
-        .higher_free_page
-        .set_start(va + VirtualAddress::from(0x200000));
-    println!("Updated boot info {}", boot_info_copy);
+
+    println!(" Updated boot info {}", boot_info_copy);
 
     allocator::init(&boot_info_copy).unwrap();
 

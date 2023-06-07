@@ -87,12 +87,11 @@ impl fmt::Debug for BootInfo {
 #[cfg(not(test))]
 #[no_mangle]
 pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
-    // pub unsafe fn kernel_main(x0: u64) -> ! {
     exception::init().unwrap();
     console::init().unwrap();
-    memory::init(boot_info).unwrap();
     println!("Boot info:");
     println!("{}", boot_info);
+    memory::init(boot_info).unwrap();
     println_1!(
         "Free 4K frame: {}",
         boot_info.free_frame.count_4K().unwrap()
