@@ -7,7 +7,7 @@ use aarch64_cpu::{
     asm::barrier,
     registers::{TTBR0_EL1, TTBR1_EL1},
 };
-use core::ops::Index;
+use core::{arch::asm, ops::Index};
 use tock_registers::interfaces::ReadWriteable;
 
 extern "C" {
@@ -54,7 +54,11 @@ impl<L: TranslationTableLevel> UnsafeTranslationTable<L> {
             Err(EBOUND)
         } else {
             unsafe {
-                self.base.offset(idx.try_into().unwrap()).write(entry);
+                let target: usize =
+                    self.base as usize + idx * core::mem::size_of::<TranslationTableEntry<L>>();
+                core::ptr::write_volatile(target as *mut u64, entry.value());
+
+                asm!("DSB SY", "ISB SY",);
             }
             Ok(())
         }
@@ -64,8 +68,6 @@ impl<L: TranslationTableLevel> UnsafeTranslationTable<L> {
 impl UnsafeTranslationTable<Level1> {
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         let l1_entry = self[va.level1()].get();
-        println!("l2_table_address : {:#018x}", Self::l2_table_address(va));
-        println!("l1_entry {}", l1_entry);
 
         match l1_entry {
             Descriptor::TableEntry(_) => {
@@ -191,10 +193,6 @@ impl UnsafeTranslationTable<Level1> {
             _ => None,
         }
         .ok_or(ETYPE)?;
-        println!(
-            "l3 vable address {:?}",
-            VirtualAddress::from(Self::l3_table_address(va))
-        );
 
         let mut l3_entry: Descriptor = l3_table[va.level3()].get();
         match l3_entry {
@@ -206,7 +204,6 @@ impl UnsafeTranslationTable<Level1> {
             }
             _ => return Err(ETYPE),
         };
-        println!("l3 entry {}", l3_table[va.level3()].get());
         Ok(())
     }
     fn map_2M(

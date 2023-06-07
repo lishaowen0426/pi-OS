@@ -62,7 +62,7 @@ ttbr1_el1   0xffffff8000000000   ----++---------------+                   |     
 
 
 
-
+//.equ DEBUG_PAGE_TABLE, 1
 
 
 
@@ -125,7 +125,7 @@ _start:
     //fill in the recursive entry
     //L1[511] = L1
     adr_load            x1, l1_lower_page_table
-    ldr                 x2, =.L_RECURSIVE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_recursive_entry    x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
     adr_load            x0, l1_lower_page_table
@@ -164,6 +164,16 @@ _start:
     ldr                 x3, =.L_RWNORMAL
     bl .L_fill_l3_table
 
+
+    //page table, just for debug, so we can manually read the table using
+    //lower addresses
+.ifdef DEBUG_PAGE_TABLE
+    adr_load            x0, l3_lower_page_table
+    adr_load            x1, __page_table_start
+    adr_load            x2, __page_table_end_exclusive
+    ldr                 x3, =.L_RWNORMAL
+    bl .L_fill_l3_table
+.endif
 
     mov lr, x6
     ret
@@ -243,7 +253,7 @@ _start:
     //fill in the recursive entry
     //higher L1[511] = L1
     adr_load            x1, l1_higher_page_table
-    ldr                 x2, =.L_RECURSIVE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_recursive_entry  x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
     str                 x1, [x0, x2, LSL #3]
@@ -346,7 +356,9 @@ _start:
     //we are in the higher half
     //DONOT use adr_link anymore, as it is based on lower half + kernel_base
 
+.ifnotdef DEBUG_PAGE_TABLE
     bl                 .L_unmapped_lower
+.endif
 
     bl                  .L_prepare_boot_info
 
@@ -425,7 +437,11 @@ _start:
 
 
     //higher free page
+.ifdef DEBUG_PAGE_TABLE
+    adr_load     x1, __page_table_end_exclusive
+.else
     adr_load     x1, __bss_end_exclusive
+.endif
     ldr          x2, =.L_STACK_TOP_VIRTUAL
     ldr          x3, =.L_INITIAL_STACK_SIZE
     add          x3, x3, #1     //add stack guard

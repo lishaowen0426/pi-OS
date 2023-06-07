@@ -74,7 +74,7 @@ _start:
     //fill in the recursive entry
     //L1[511] = L1
     adr_load            x1, l1_lower_page_table
-    ldr                 x2, =.L_RECURSIVE_ATTR
+    ldr                 x2, =.L_TABLE_ATTR
     make_recursive_entry    x1, x1, x2
     ldr                 x2, =.L_RECURSIVE_INDEX
     adr_load            x0, l1_lower_page_table
