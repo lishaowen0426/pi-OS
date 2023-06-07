@@ -113,7 +113,7 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
         core::ptr::read_volatile(va.value() as *mut u64);
     }
     println!(" map success");
-    heap::init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
+    heap::heap_init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
 
     println!(" Updated boot info {}", boot_info_copy);
 

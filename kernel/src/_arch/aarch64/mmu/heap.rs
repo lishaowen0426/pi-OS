@@ -6,7 +6,7 @@ use core::{
     ops::Deref,
 };
 use intrusive_collections::linked_list::AtomicLinkOps;
-use spin::{mutex::SpinMutex, once::Once};
+use spin::{mutex::SpinMutex, once::Once, Spin};
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
@@ -122,6 +122,12 @@ struct UnsafeHeapAllocator {
 }
 
 impl HeapBackend {
+    pub fn new() -> Self {
+        Self {
+            free_4K: Free4KVec::new(),
+            free_2M: Free2MVec::new(),
+        }
+    }
     fn insert(&mut self, va: VaRange) -> Result<(), ErrorCode> {
         if va.is_4K() {
             self.free_4K.push(va)
@@ -200,12 +206,8 @@ impl HeapFrontend {
 
 impl UnsafeHeapAllocator {
     pub fn new() -> Self {
-        println!("flag: 4");
         Self {
-            backend: HeapBackend {
-                free_4K: Free4KVec::new(),
-                free_2M: Free2MVec::new(),
-            },
+            backend: HeapBackend::new(),
             frontend: HeapFrontend::new(),
         }
     }
@@ -229,10 +231,16 @@ impl UnsafeHeapAllocator {
 pub struct HeapAllocator {
     allocator: SpinMutex<UnsafeHeapAllocator>,
 }
+pub struct TestAllocator {
+    // backend: SpinMutex<HeapBackend>,
+    // backend: HeapBackend,
+    // frontend: SpinMutex<HeapFrontend>,
+    // a: SpinMutex<[Option<VaRange>; 2]>,
+    allocator: UnsafeHeapAllocator,
+}
 
 impl HeapAllocator {
     pub fn new() -> Self {
-        println!("flag: 2");
         Self {
             allocator: SpinMutex::new(UnsafeHeapAllocator::new()),
         }
@@ -250,23 +258,31 @@ impl HeapAllocator {
     }
 }
 
-pub fn init(va: VaRange) -> Result<(), ErrorCode> {
-    println!("flag: 333");
-    BACKEND_HEAP.call_once(|| HeapBackend {
-        free_4K: Free4KVec::new(),
-        free_2M: Free2MVec::new(),
+#[no_mangle]
+#[inline(never)]
+pub fn heap_init(va: VaRange) -> Result<(), ErrorCode> {
+    // println!("flag: 333");
+    // BACKEND_HEAP.call_once(|| HeapBackend {
+    // free_4K: Free4KVec::new(),
+    // free_2M: Free2MVec::new(),
+    // });
+    // FRONTEND_HEAP.call_once(|| HeapFrontend::new());
+    // println!("flag: 444");
+    TEST_ALLOCATOR.call_once(|| TestAllocator {
+        // backend: SpinMutex::new(HeapBackend::new()),
+        // backend: HeapBackend::new(),
+        // frontend: SpinMutex::new(HeapFrontend::new()),
+        // a: SpinMutex::new([Some(VaRange::new(0, 1)), Some(VaRange::new(1, 2))]),
+        // a: SpinMutex::new([None, None]),
+        allocator: UnsafeHeapAllocator::new(),
     });
-    FRONTEND_HEAP.call_once(|| HeapFrontend::new());
-    println!("flag: 444");
     // HEAP_ALLOCATOR.call_once(|| HeapAllocator::new());
-    println!("flag: 1");
     // HEAP_ALLOCATOR.get().unwrap().init(va)
     Ok(())
 }
 pub static HEAP_ALLOCATOR: Once<HeapAllocator> = Once::new();
+pub static TEST_ALLOCATOR: Once<TestAllocator> = Once::new();
 
-static BACKEND_HEAP: Once<HeapBackend> = Once::new();
-static FRONTEND_HEAP: Once<HeapFrontend> = Once::new();
 pub struct Heap {}
 
 impl Heap {
