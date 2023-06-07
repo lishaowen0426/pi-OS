@@ -2,6 +2,7 @@ use super::*;
 use crate::{errno::*, println, static_vector, type_enum, utils::bitfields::Bitfields};
 use core::{
     alloc::{GlobalAlloc, Layout},
+    cell::{SyncUnsafeCell, UnsafeCell},
     fmt,
     ops::Deref,
 };
@@ -231,13 +232,6 @@ impl UnsafeHeapAllocator {
 pub struct HeapAllocator {
     allocator: SpinMutex<UnsafeHeapAllocator>,
 }
-pub struct TestAllocator {
-    // backend: SpinMutex<HeapBackend>,
-    // backend: HeapBackend,
-    // frontend: SpinMutex<HeapFrontend>,
-    // a: SpinMutex<[Option<VaRange>; 2]>,
-    allocator: UnsafeHeapAllocator,
-}
 
 impl HeapAllocator {
     pub fn new() -> Self {
@@ -261,27 +255,10 @@ impl HeapAllocator {
 #[no_mangle]
 #[inline(never)]
 pub fn heap_init(va: VaRange) -> Result<(), ErrorCode> {
-    // println!("flag: 333");
-    // BACKEND_HEAP.call_once(|| HeapBackend {
-    // free_4K: Free4KVec::new(),
-    // free_2M: Free2MVec::new(),
-    // });
-    // FRONTEND_HEAP.call_once(|| HeapFrontend::new());
-    // println!("flag: 444");
-    TEST_ALLOCATOR.call_once(|| TestAllocator {
-        // backend: SpinMutex::new(HeapBackend::new()),
-        // backend: HeapBackend::new(),
-        // frontend: SpinMutex::new(HeapFrontend::new()),
-        // a: SpinMutex::new([Some(VaRange::new(0, 1)), Some(VaRange::new(1, 2))]),
-        // a: SpinMutex::new([None, None]),
-        allocator: UnsafeHeapAllocator::new(),
-    });
-    // HEAP_ALLOCATOR.call_once(|| HeapAllocator::new());
-    // HEAP_ALLOCATOR.get().unwrap().init(va)
-    Ok(())
+    HEAP_ALLOCATOR.call_once(|| HeapAllocator::new());
+    HEAP_ALLOCATOR.get().unwrap().init(va)
 }
 pub static HEAP_ALLOCATOR: Once<HeapAllocator> = Once::new();
-pub static TEST_ALLOCATOR: Once<TestAllocator> = Once::new();
 
 pub struct Heap {}
 
