@@ -37,6 +37,7 @@ mod cpu;
 mod driver;
 mod errno;
 mod exception;
+mod generics;
 mod macros;
 mod memory;
 mod panic_wait;

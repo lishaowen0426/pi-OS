@@ -44,6 +44,7 @@ where
     }
     pub fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
         let base = self.data.as_ptr() as usize;
+
         let diff = ptr as usize - base;
         if diff % layout.size() != 0 {
             Err(EALIGN)
@@ -102,7 +103,6 @@ impl SizeClassAllocator {
         self.pages.push(va_range)
     }
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
-        println!("sz = {}, {:?}", 1 << (self.size_class as u8), layout);
         for p in self.pages.iter() {
             if let Some(vr) = p.as_ref() {
                 let obj_page: &mut ObjectPage4K =
