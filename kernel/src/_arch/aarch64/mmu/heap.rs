@@ -1,5 +1,10 @@
 use super::*;
-use crate::{errno::*, println, static_vector, type_enum, utils::bitfields::Bitfields};
+use crate::{
+    errno::*,
+    generics::{DoublyLinkable, Link},
+    println, static_vector, type_enum,
+    utils::bitfields::Bitfields,
+};
 use core::{
     alloc::{GlobalAlloc, Layout},
     cell::{SyncUnsafeCell, UnsafeCell},
@@ -18,19 +23,19 @@ type AllocationMap = [u64; 8];
 #[repr(C)]
 struct ObjectPage<const SIZE: usize>
 where
-    [(); SIZE - core::mem::size_of::<AllocationMap>()]:,
+    [(); SIZE - core::mem::size_of::<AllocationMap>() - 2 * core::mem::size_of::<usize>()]:,
 {
-    data: [u8; SIZE - core::mem::size_of::<AllocationMap>()],
+    data: [u8; SIZE - core::mem::size_of::<AllocationMap>() - 2 * core::mem::size_of::<usize>()],
 
     allocated: AllocationMap, // 1 means the location is allocated
+    prev_link: Link<ObjectPage<SIZE>>,
+    next_link: Link<ObjectPage<SIZE>>,
 }
 
 impl<const SIZE: usize> ObjectPage<SIZE>
 where
-    [(); SIZE - core::mem::size_of::<AllocationMap>()]:,
+    [(); SIZE - core::mem::size_of::<AllocationMap>() - 2 * core::mem::size_of::<usize>()]:,
 {
-    const METADATA_SIZE: usize = core::mem::size_of::<[u64; 8]>();
-
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
         let offset = self.allocated.first_zero();
         let ptr: usize = self.data.as_ptr() as usize + offset * layout.size();
@@ -55,6 +60,26 @@ where
             self.allocated.set_bit(offset, 0);
             Ok(())
         }
+    }
+}
+
+impl<const SIZE: usize> DoublyLinkable for ObjectPage<SIZE>
+where
+    [(); SIZE - core::mem::size_of::<AllocationMap>() - 2 * core::mem::size_of::<usize>()]:,
+{
+    type T = Self;
+    fn set_prev(&mut self, pre: Link<Self>) {
+        self.prev_link = pre;
+    }
+    fn set_next(&mut self, next: Link<Self>) {
+        self.next_link = next;
+    }
+
+    fn prev(&self) -> Link<Self> {
+        self.prev_link
+    }
+    fn next(&self) -> Link<Self> {
+        self.next_link
     }
 }
 
@@ -86,33 +111,26 @@ type_enum!(
         SZ_2048 = 11,
     }
 );
+
 struct SizeClassAllocator {
-    pages: ObjectPageVec,
+    slabs: Link<ObjectPage4K>,
+    full_slabs: Link<ObjectPage4K>,
     size_class: Log2SizeClass,
 }
 
 impl SizeClassAllocator {
     pub const fn new(sc: Log2SizeClass) -> Self {
         Self {
-            pages: ObjectPageVec::new(),
+            slabs: Link::none(),
+            full_slabs: Link::none(),
             size_class: sc,
         }
     }
 
     pub fn refill(&mut self, va_range: VaRange) -> Result<(), ErrorCode> {
-        self.pages.push(va_range)
+        Ok(())
     }
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
-        for p in self.pages.iter() {
-            if let Some(vr) = p.as_ref() {
-                let obj_page: &mut ObjectPage4K =
-                    unsafe { core::mem::transmute::<usize, &mut ObjectPage4K>(vr.start().value()) };
-
-                if let Some(ptr) = obj_page.alloc(layout) {
-                    return Some(ptr);
-                }
-            }
-        }
         None
     }
 }

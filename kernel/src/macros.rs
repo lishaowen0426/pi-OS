@@ -203,6 +203,28 @@ macro_rules! static_vector {
     };
 }
 
+#[macro_export]
+macro_rules! impl_doubly_linkable {
+    ($name:ident) => {
+        impl DoublyLinkable for $name {
+            type T = Self;
+            fn set_prev(&mut self, pre: Link<Self>) {
+                self.prev_link = pre;
+            }
+            fn set_next(&mut self, next: Link<Self>) {
+                self.next_link = next;
+            }
+
+            fn prev(&self) -> Link<Self> {
+                self.prev_link
+            }
+            fn next(&self) -> Link<Self> {
+                self.next_link
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

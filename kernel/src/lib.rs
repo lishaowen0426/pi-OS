@@ -47,6 +47,7 @@ mod utils;
 
 use aarch64_cpu::{asm, registers::*};
 use core::fmt;
+use generics::*;
 use memory::address::*;
 use tock_registers::interfaces::Writeable;
 // 32 bytes * 4 + 16 + 16 + 16
@@ -138,7 +139,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     );
     println!("Boot info:");
     println!("{}", boot_info);
-    memory::init(boot_info).unwrap();
+    // memory::init(boot_info).unwrap();
 
     test_main();
 
