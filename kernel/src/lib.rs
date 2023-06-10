@@ -31,6 +31,8 @@
 #![reexport_test_harness_main = "test_main"]
 #![test_runner(crate::test_runner)]
 
+extern crate alloc;
+
 mod bsp;
 mod console;
 mod cpu;
@@ -107,11 +109,6 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
             | (507 << memory::config::L3_INDEX_SHIFT)
     );
 
-    unsafe {
-        let ptr = 0x10000 as *mut u64;
-        core::ptr::write_volatile(ptr, 42);
-    }
-
     println!("Passed!");
 
     loop {}
@@ -139,7 +136,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     );
     println!("Boot info:");
     println!("{}", boot_info);
-    // memory::init(boot_info).unwrap();
+    memory::init(boot_info).unwrap();
 
     test_main();
 

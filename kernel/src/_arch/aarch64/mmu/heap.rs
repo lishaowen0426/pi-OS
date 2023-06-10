@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     errno::*,
-    generics::{DoublyLinkable, Link},
+    generics::{DoublyLinkable, DoublyLinkedList, Link},
     println, static_vector, type_enum,
     utils::bitfields::Bitfields,
 };
@@ -27,7 +27,18 @@ where
 {
     data: [u8; SIZE - core::mem::size_of::<AllocationMap>() - 2 * core::mem::size_of::<usize>()],
 
-    allocated: AllocationMap, // 1 means the location is allocated
+    // 1 means the location is allocated
+    // index 0 starts from the rightmost bit of the last array element
+    // note this is different from how we index an array
+    // but to keep consistent with a very big integer made up by concatenating multiple u64
+
+    // we at most use 502 bits for the smallest size class 8 bytes
+    // (4096 - 64 -8 - 8) / 8 = 502
+    // we use the top bit as an indication of whether the page is full
+    // since index stars from the last element
+    // this is actually the first element
+    allocated: AllocationMap,
+
     prev_link: Link<ObjectPage<SIZE>>,
     next_link: Link<ObjectPage<SIZE>>,
 }
@@ -36,7 +47,29 @@ impl<const SIZE: usize> ObjectPage<SIZE>
 where
     [(); SIZE - core::mem::size_of::<AllocationMap>() - 2 * core::mem::size_of::<usize>()]:,
 {
-    pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+    const FULL_BIT: usize = 63;
+
+    fn init(&mut self, sc: Log2SizeClass) -> Result<(), ErrorCode> {
+        // check if the page is empty
+        for u in self.allocated.iter() {
+            if *u != 0 {
+                return Err(EINVAL);
+            }
+        }
+
+        Ok(())
+    }
+    fn mark_full(&mut self) {
+        self.allocated[0].set_bit(Self::FULL_BIT, 1)
+    }
+    fn clear_full(&mut self) {
+        self.allocated[0].set_bit(Self::FULL_BIT, 0)
+    }
+    fn is_marked_full(&self) -> bool {
+        self.allocated[0].get_bit(Self::FULL_BIT) == 1
+    }
+
+    fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
         let offset = self.allocated.first_zero();
         let ptr: usize = self.data.as_ptr() as usize + offset * layout.size();
 
@@ -44,10 +77,13 @@ where
         if ptr + layout.size() > (self.data.as_ptr() as usize + self.data.len()) {
             return None;
         }
+        if self.allocated.get_bit(offset) == 1 {
+            return None;
+        }
         self.allocated.set_bit(offset, 1);
         Some(ptr as *mut u8)
     }
-    pub fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
+    fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
         let base = self.data.as_ptr() as usize;
 
         let diff = ptr as usize - base;
@@ -112,26 +148,66 @@ type_enum!(
     }
 );
 
+impl Log2SizeClass {
+    fn to_bytes(&self) -> usize {
+        match *self {
+            Log2SizeClass::Undefined => 0,
+            _ => 1 << *self as u8,
+        }
+    }
+}
+
 struct SizeClassAllocator {
-    slabs: Link<ObjectPage4K>,
-    full_slabs: Link<ObjectPage4K>,
+    slabs: DoublyLinkedList<ObjectPage4K>,
+    full_slabs: DoublyLinkedList<ObjectPage4K>,
     size_class: Log2SizeClass,
 }
 
 impl SizeClassAllocator {
     pub const fn new(sc: Log2SizeClass) -> Self {
         Self {
-            slabs: Link::none(),
-            full_slabs: Link::none(),
+            slabs: DoublyLinkedList::new(),
+            full_slabs: DoublyLinkedList::new(),
             size_class: sc,
         }
     }
 
     pub fn refill(&mut self, va_range: VaRange) -> Result<(), ErrorCode> {
+        self.slabs.push_front(Link::some(va_range.start().value()));
         Ok(())
     }
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+        println!("{:?}", layout);
+        for l in self.slabs.iter() {
+            let obj: &mut ObjectPage4K = l.resolve_mut();
+            if let Some(p) = obj.alloc(layout) {
+                return Some(p);
+            } else {
+                // Check DoublyLinkedlistIteratror
+                // when next() returns, the iter is already pointing to the next
+                println!("move slab to full");
+                obj.mark_full();
+                self.slabs.remove(l);
+                self.full_slabs.push_front(l);
+            }
+        }
         None
+    }
+
+    // ptr is always within the 4K page from the base of the ObjectPage4K
+    //
+    fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+        let va = VirtualAddress::from(ptr as usize);
+        let obj_base = va.align_to_4K_up();
+        let link = Link::some(obj_base.value());
+        let obj: &mut ObjectPage4K = link.resolve_mut();
+        obj.dealloc(ptr, layout).unwrap();
+
+        if obj.is_marked_full() {
+            obj.clear_full();
+            self.full_slabs.remove(link);
+            self.slabs.push_back(link);
+        }
     }
 }
 
@@ -221,30 +297,36 @@ impl HeapFrontend {
         let sz = Self::pick_size_class(layout.size() as u64) as usize;
         self.sc_allocator[sz - 3].alloc(layout)
     }
+    fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+        let sz = Self::pick_size_class(layout.size() as u64) as usize;
+        self.sc_allocator[sz - 3].dealloc(ptr, layout)
+    }
 }
 
 impl UnsafeHeapAllocator {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             backend: HeapBackend::new(),
             frontend: HeapFrontend::new(),
         }
     }
 
-    pub fn init(&mut self, va: VaRange) -> Result<(), ErrorCode> {
+    fn init(&mut self, va: VaRange) -> Result<(), ErrorCode> {
         self.backend.insert(va)
     }
 
-    pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+    fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
         if let Some(ptr) = self.frontend.alloc(layout) {
             Some(ptr)
         } else {
             let va_range_4k = self.backend.allocate_4K_free().ok()?;
             self.frontend.refill(va_range_4k, layout).ok()?;
 
-            self.frontend.alloc(layout)
+            let result = self.frontend.alloc(layout);
+            result
         }
     }
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
 }
 
 pub struct HeapAllocator {
@@ -252,21 +334,26 @@ pub struct HeapAllocator {
 }
 
 impl HeapAllocator {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             allocator: SpinMutex::new(UnsafeHeapAllocator::new()),
         }
     }
 
-    pub fn init(&self, va: VaRange) -> Result<(), ErrorCode> {
+    fn init(&self, va: VaRange) -> Result<(), ErrorCode> {
         self.allocator.lock().init(va)
     }
-    fn alloc(&self, layout: Layout) -> *mut u8 {
+
+    pub fn alloc(&self, layout: Layout) -> *mut u8 {
         if let Some(ptr) = self.allocator.lock().alloc(layout) {
             ptr
         } else {
             core::ptr::null_mut()
         }
+    }
+
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        self.allocator.lock().dealloc(ptr, layout)
     }
 }
 
@@ -293,7 +380,9 @@ unsafe impl GlobalAlloc for Heap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         HEAP_ALLOCATOR.get().unwrap().alloc(layout)
     }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {}
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        HEAP_ALLOCATOR.get().unwrap().dealloc(ptr, layout)
+    }
 }
 
 #[cfg(test)]

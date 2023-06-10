@@ -229,7 +229,7 @@ _start:
     stp         x1, x2, [sp, #16 * 7]
 
     //free frame
-    adr_load    x1,  __bss_end_exclusive
+    adr_load    x1,  __page_table_end_exclusive
     ldr         x2,  =.L_PERIPHERAL_PHYSICAL_START
     stp         x1, x2, [sp, #16 * 8]
 

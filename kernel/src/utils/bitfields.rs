@@ -278,6 +278,7 @@ mod tests {
         }
         {
             let mut arr: [u64; 3] = [0x0, 0x0, 0x0];
+            assert_eq!(arr.first_zero(), 0);
             arr.set_bits(0..8, 0b10010111);
             assert_eq!(arr.first_zero(), 3);
             arr.set_bits(0..8, 0);

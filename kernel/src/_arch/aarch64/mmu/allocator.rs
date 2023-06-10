@@ -1,13 +1,16 @@
 extern crate alloc;
+
 use super::{address::*, heap::*};
 use crate::{
     errno::*,
     memory::{BlockSize, MemoryRegion, BLOCK_2M, BLOCK_4K},
     println, BootInfo,
 };
+use aarch64_cpu::registers::*;
 use alloc::boxed::Box;
 use intrusive_collections::{intrusive_adapter, LinkedList, LinkedListLink};
 use spin::{mutex::SpinMutex, once::Once};
+use tock_registers::interfaces::{Readable, Writeable};
 
 const HUGE_PAGE_RATIO: usize = 40; // in percentage
 
@@ -41,6 +44,7 @@ impl UnsafeFrameAllocator {
             "box new, size {}",
             core::mem::size_of::<AddressRangeNode<PaRange>>()
         );
+
         self.free_4k.push_back(Box::new(AddressRangeNode {
             link: LinkedListLink::new(),
             range: small_range,
@@ -195,8 +199,6 @@ pub static PAGE_ALLOCATOR: Once<PageAllocator> = Once::new();
 
 pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     FRAME_ALLOCATOR.call_once(|| FrameAllocator::new(boot_info));
-    println!("flag: 1");
     PAGE_ALLOCATOR.call_once(|| PageAllocator::new(boot_info));
-    println!("flag: 2");
     Ok(())
 }

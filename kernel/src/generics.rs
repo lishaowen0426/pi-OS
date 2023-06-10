@@ -13,6 +13,15 @@ pub struct Link<T> {
     _marker: PhantomData<T>,
 }
 
+impl<T> From<usize> for Link<T> {
+    fn from(value: usize) -> Self {
+        Self {
+            ptr: value,
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<T> fmt::Display for Link<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Link({:#012x})", self.ptr)
@@ -70,6 +79,10 @@ impl<T> Link<T> {
         !self.is_none()
     }
 
+    pub fn ptr(&self) -> usize {
+        self.ptr
+    }
+
     pub fn resolve(&self) -> &T {
         unsafe { core::mem::transmute::<usize, &T>(self.ptr) }
     }
@@ -108,7 +121,7 @@ impl<T> DoublyLinkedList<T>
 where
     T: DoublyLinkable + DoublyLinkable<T = T>,
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             head: Link::none(),
             tail: Link::none(),
@@ -120,14 +133,11 @@ where
         self._len
     }
 
-    pub fn push_front(&mut self, p: usize) {
+    pub fn push_front(&mut self, link: Link<T>) {
         if self.head.is_none() {
-            let link: Link<T> = Link::some(p);
             self.head = link;
             self.tail = link;
         } else {
-            let link: Link<T> = Link::some(p);
-
             // update the inserted
             link.resolve_mut().set_next(self.head);
 
@@ -139,14 +149,11 @@ where
         self._len = self._len + 1;
     }
 
-    pub fn push_back(&mut self, p: usize) {
+    pub fn push_back(&mut self, link: Link<T>) {
         if self.tail.is_none() {
-            let link: Link<T> = Link::some(p);
             self.head = link;
             self.tail = link;
         } else {
-            let link: Link<T> = Link::some(p);
-
             // update the inserted
             link.resolve_mut().set_prev(self.tail);
 
@@ -158,22 +165,21 @@ where
         self._len = self._len + 1;
     }
 
-    pub fn remove(&mut self, p: usize) -> bool {
-        let l = Link::some(p);
+    pub fn remove(&mut self, link: Link<T>) -> bool {
         let mut removed = Link::none();
         if self.len() == 0 {
-        } else if self.head == l && self.len() == 1 {
+        } else if self.head == link && self.len() == 1 {
             removed = self.head;
             self.head = Link::none();
             self.tail = Link::none();
-        } else if self.head == l {
+        } else if self.head == link {
             let new_head = self.head.resolve().next();
             new_head.resolve_mut().set_prev(Link::none());
             removed = self.head;
             self.head = new_head;
         } else {
             for c in self.iter() {
-                if c == l {
+                if c == link {
                     if c == self.tail {
                         let new_tail = self.tail.resolve().prev();
                         new_tail.resolve_mut().set_next(Link::none());
@@ -294,7 +300,7 @@ mod tests {
             ];
             let mut dll: DoublyLinkedList<TestLinkable> = DoublyLinkedList::new();
             for t in ts.iter() {
-                dll.push_front(t as *const _ as usize);
+                dll.push_front(Link::some(t as *const _ as usize));
             }
 
             for (i, l) in dll.iter().enumerate() {
@@ -304,12 +310,12 @@ mod tests {
                 );
             }
 
-            assert!(dll.remove(&ts[2] as *const TestLinkable as usize));
+            assert!(dll.remove(Link::some(&ts[2] as *const TestLinkable as usize)));
             // println!("after remove 2 =  {}", dll);
-            assert!(!dll.remove(&ts[2] as *const TestLinkable as usize));
-            assert!(dll.remove(&ts[0] as *const TestLinkable as usize));
+            assert!(!dll.remove(Link::some(&ts[2] as *const TestLinkable as usize)));
+            assert!(dll.remove(Link::some(&ts[0] as *const TestLinkable as usize)));
             // println!("after remove 0 =  {}", dll);
-            assert!(dll.remove(&ts[4] as *const TestLinkable as usize));
+            assert!(dll.remove(Link::some(&ts[4] as *const TestLinkable as usize)));
             // println!("after remove 4 =  {}", dll);
             let ts2 = [
                 TestLinkable::new(5),
@@ -319,7 +325,7 @@ mod tests {
                 TestLinkable::new(9),
             ];
             for t in ts2.iter() {
-                dll.push_front(t as *const _ as usize);
+                dll.push_front(Link::some(t as *const _ as usize));
             }
             // println!("dll {}", dll);
         }
@@ -333,7 +339,7 @@ mod tests {
             ];
             let mut dll: DoublyLinkedList<TestLinkable> = DoublyLinkedList::new();
             for t in ts.iter() {
-                dll.push_back(t as *const _ as usize);
+                dll.push_back(Link::some(t as *const _ as usize));
             }
 
             for (i, l) in dll.iter().enumerate() {
@@ -343,12 +349,12 @@ mod tests {
                 );
             }
 
-            assert!(dll.remove(&ts[2] as *const TestLinkable as usize));
+            assert!(dll.remove(Link::some(&ts[2] as *const TestLinkable as usize)));
             println!("after remove 2 =  {}", dll);
-            assert!(!dll.remove(&ts[2] as *const TestLinkable as usize));
-            assert!(dll.remove(&ts[0] as *const TestLinkable as usize));
+            assert!(!dll.remove(Link::some(&ts[2] as *const TestLinkable as usize)));
+            assert!(dll.remove(Link::some(&ts[0] as *const TestLinkable as usize)));
             println!("after remove 0 =  {}", dll);
-            assert!(dll.remove(&ts[4] as *const TestLinkable as usize));
+            assert!(dll.remove(Link::some(&ts[4] as *const TestLinkable as usize)));
             println!("after remove 4 =  {}", dll);
             let ts2 = [
                 TestLinkable::new(5),
@@ -358,9 +364,30 @@ mod tests {
                 TestLinkable::new(9),
             ];
             for t in ts2.iter() {
-                dll.push_front(t as *const _ as usize);
+                dll.push_front(Link::some(t as *const _ as usize));
             }
             println!("dll {}", dll);
+        }
+        {
+            let ts = [
+                TestLinkable::new(0),
+                TestLinkable::new(1),
+                TestLinkable::new(2),
+                TestLinkable::new(3),
+                TestLinkable::new(4),
+            ];
+            let mut dll: DoublyLinkedList<TestLinkable> = DoublyLinkedList::new();
+            for t in ts.iter() {
+                dll.push_back(Link::some(t as *const _ as usize));
+            }
+            for (i, l) in dll.iter().enumerate() {
+                assert_eq!(
+                    &ts[i] as *const _ as usize,
+                    l.resolve() as *const _ as usize
+                );
+                dll.remove(l);
+            }
+            println!("dll at the end {}", dll);
         }
     }
 }

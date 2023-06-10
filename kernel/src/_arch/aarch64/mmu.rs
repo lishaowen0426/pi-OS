@@ -2,6 +2,8 @@ use crate::{errno::*, println, BootInfo};
 use aarch64_cpu::registers::*;
 use spin::{mutex::SpinMutex, once::Once};
 use tock_registers::interfaces::{Readable, Writeable};
+extern crate alloc;
+use alloc::boxed::Box;
 
 #[path = "mmu/address.rs"]
 pub mod address;
@@ -75,6 +77,17 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
     Ok(())
 }
 
+#[repr(transparent)]
+struct Test {
+    a: [u8; 16],
+}
+impl Test {
+    fn new() -> Self {
+        Self {
+            a: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        }
+    }
+}
 pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     MMU.call_once(|| {
         MemoryManagementUnit::new(
@@ -114,7 +127,6 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     }
     println!(" map success");
     heap::heap_init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
-    println!(" Updated boot info {}", boot_info_copy);
 
     allocator::init(&boot_info_copy).unwrap();
 

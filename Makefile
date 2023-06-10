@@ -33,6 +33,7 @@ endif
 QEMU_MISSING_STRING = "This board is not yet supported for QEMU."
 TARGET            = aarch64-unknown-none-softfloat
 KERNEL_BIN        = kernel8.img
+QEMU_KERNEL_BIN        = qemu-kernel8.img
 QEMU_BINARY       = qemu-system-aarch64
 QEMU_MACHINE_TYPE = raspi3b
 QEMU_RELEASE_ARGS = -serial stdio -display none  -machine $(QEMU_MACHINE_TYPE)
@@ -83,6 +84,7 @@ TEST_KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/test-kernel.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
 KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/kernel
+QEMU_KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/qemu-kernel
 # This parses cargo's dep-info file.
 # https://doc.rust-lang.org/cargo/guide/build-cache.html#dep-info-files
 KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
@@ -210,9 +212,9 @@ qemu: do_qemu
 
 do_qemu: FEATURES := --features build_qemu
 
-do_qemu: $(KERNEL_BIN)
+do_qemu: $(QEMU_KERNEL_BIN)
 	$(call color_header, "Launching QEMU")
-	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN)
+	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(QEMU_KERNEL_BIN)
 
 qemuasm: $(KERNEL_BIN)
 	$(call color_header, "Launching QEMU with ASM output")
@@ -274,9 +276,9 @@ do_chainboot : $(KERNEL_BIN)
 	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
 
-gdb: $(KERNEL_BIN)
+gdb: 
 	$(call color_header, "Launching GDB")
-	@gdb  $(KERNEL_ELF)
+	@gdb  $(QEMU_KERNEL_ELF)
 
 openocd:
 	$(call color_header, "Launching OpenOCD")
@@ -299,6 +301,7 @@ define KERNEL_TEST_RUNNER
     TEST_BINARY=$$(echo $$1.img | sed -e 's/.*target/target/g')
 
 	echo $$TEST_BINARY
+	echo $$TEST_ELF
 
 	# $(DOCKER_TOOLS) $(READELF_BINARY) --headers $$TEST_ELF
 	# $(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $$TEST_ELF | sort | rustfilt
@@ -341,7 +344,14 @@ $(TEST_ASSEMBLED_BOOT): $(TEST_BOOT_ASM)
 $(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 	$(call color_header, "Linking kernel ELF - $(BSP)")
 	$(call color_header, "Output kernel ELF - $(KERNEL_ELF)")
-	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) $(KERNEL_ELF)
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) 
+
+$(QEMU_KERNEL_ELF): $(KERNEL_LIB) $(TEST_ASSEMBLED_BOOT)
+	$(call color_header, "Linking qemu kernel ELF - $(BSP)")
+	$(call color_header, "Output qemu kernel ELF - $(QEMU_KERNEL_ELF)")
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(TEST_KERNEL_LINKER_SCRIPT_PATH) -n -o $(QEMU_KERNEL_ELF) $(TEST_ASSEMBLED_BOOT) $(KERNEL_LIB) 
+
+
 
 $(KERNEL_BIN): $(KERNEL_ELF)
 	$(call color_header, "Generating stripped binary with kernel elf - $(KERNEL_ELF)")
@@ -350,3 +360,12 @@ $(KERNEL_BIN): $(KERNEL_ELF)
 	@echo $(KERNEL_BIN)
 	$(call color_progress_prefix, "Size")
 	$(call disk_usage_KiB, $(KERNEL_BIN))
+
+$(QEMU_KERNEL_BIN): $(QEMU_KERNEL_ELF)
+	$(call color_header, "Generating stripped binary with kernel elf - $(QEMU_KERNEL_ELF)")
+	@$(OBJCOPY_CMD) $(QEMU_KERNEL_ELF) $(QEMU_KERNEL_BIN)
+	$(call color_progress_prefix, "Name")
+	@echo $(QEMU_KERNEL_BIN)
+	$(call color_progress_prefix, "Size")
+	$(call disk_usage_KiB, $(QEMU_KERNEL_BIN))
+
