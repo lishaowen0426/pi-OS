@@ -286,5 +286,9 @@ mod tests {
             assert_eq!(arr.first_zero(), 0);
             assert_eq!(arr.first_one(), 21);
         }
+        {
+            let mut arr: [u64; 3] = [u64::MAX, u64::MAX, u64::MAX];
+            assert_eq!(arr.first_zero(), 3 * 64);
+        }
     }
 }

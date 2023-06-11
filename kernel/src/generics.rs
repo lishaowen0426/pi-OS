@@ -350,12 +350,9 @@ mod tests {
             }
 
             assert!(dll.remove(Link::some(&ts[2] as *const TestLinkable as usize)));
-            println!("after remove 2 =  {}", dll);
             assert!(!dll.remove(Link::some(&ts[2] as *const TestLinkable as usize)));
             assert!(dll.remove(Link::some(&ts[0] as *const TestLinkable as usize)));
-            println!("after remove 0 =  {}", dll);
             assert!(dll.remove(Link::some(&ts[4] as *const TestLinkable as usize)));
-            println!("after remove 4 =  {}", dll);
             let ts2 = [
                 TestLinkable::new(5),
                 TestLinkable::new(6),
@@ -366,7 +363,6 @@ mod tests {
             for t in ts2.iter() {
                 dll.push_front(Link::some(t as *const _ as usize));
             }
-            println!("dll {}", dll);
         }
         {
             let ts = [
@@ -387,7 +383,6 @@ mod tests {
                 );
                 dll.remove(l);
             }
-            println!("dll at the end {}", dll);
         }
     }
 }

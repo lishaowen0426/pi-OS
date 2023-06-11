@@ -112,7 +112,7 @@ impl UnsafeTranslationTable<Level1> {
         pa: PhysicalAddress,
         mt: &MemoryType,
         sz: &BlockSize,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<Mapped, ErrorCode> {
         match *sz {
             BlockSize::_4K => self.map_4K(va, pa, mt),
             BlockSize::_2M => self.map_2M(va, pa, mt),
@@ -146,7 +146,7 @@ impl UnsafeTranslationTable<Level1> {
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<Mapped, ErrorCode> {
         if !va.is_4K_aligned() || !pa.is_4K_aligned() {
             return Err(EALIGN);
         }
@@ -157,7 +157,7 @@ impl UnsafeTranslationTable<Level1> {
                 l1_entry = l1_entry.set_table()?;
                 l1_entry.set_attributes(TABLE_PAGE)?;
                 let allocated_frame_addr: PhysicalAddress =
-                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?;
+                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?.start();
                 l1_entry.set_address(allocated_frame_addr)?;
                 self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
 
@@ -179,7 +179,7 @@ impl UnsafeTranslationTable<Level1> {
                 l2_entry.set_attributes(TABLE_PAGE)?;
 
                 let allocated_frame_addr: PhysicalAddress =
-                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?;
+                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?.start();
                 l2_entry.set_address(allocated_frame_addr)?;
                 l2_table.set_entry(va.level2(), TranslationTableEntry::from(l2_entry))?;
 
@@ -204,14 +204,17 @@ impl UnsafeTranslationTable<Level1> {
             }
             _ => return Err(ETYPE),
         };
-        Ok(())
+        Ok(Mapped::new(
+            VaRange::new(va, va + VirtualAddress::_4K),
+            PaRange::new(pa, pa + PhysicalAddress::_4K),
+        ))
     }
     fn map_2M(
         &self,
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<Mapped, ErrorCode> {
         if !va.is_2M_aligned() || !pa.is_2M_aligned() {
             return Err(EALIGN);
         }
@@ -222,7 +225,7 @@ impl UnsafeTranslationTable<Level1> {
                 l1_entry = l1_entry.set_table()?;
                 l1_entry.set_attributes(TABLE_PAGE)?;
                 let allocated_frame_addr: PhysicalAddress =
-                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K).unwrap();
+                    FRAME_ALLOCATOR.get().unwrap().allocate(BLOCK_4K)?.start();
                 l1_entry.set_address(allocated_frame_addr)?;
                 self.set_entry(va.level1(), TranslationTableEntry::from(l1_entry))?;
 
@@ -247,14 +250,17 @@ impl UnsafeTranslationTable<Level1> {
             }
             _ => return Err(ETYPE),
         };
-        Ok(())
+        Ok(Mapped::new(
+            VaRange::new(va, va + VirtualAddress::_2M),
+            PaRange::new(pa, pa + PhysicalAddress::_2M),
+        ))
     }
     fn map_1G(
         &self,
         va: VirtualAddress,
         pa: PhysicalAddress,
         mt: &MemoryType,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<Mapped, ErrorCode> {
         if !va.is_1G_aligned() || !pa.is_1G_aligned() {
             return Err(EALIGN);
         }
@@ -270,7 +276,10 @@ impl UnsafeTranslationTable<Level1> {
             _ => return Err(ETYPE),
         };
 
-        Ok(())
+        Ok(Mapped::new(
+            VaRange::new(va, va + VirtualAddress::_1G),
+            PaRange::new(pa, pa + PhysicalAddress::_1G),
+        ))
     }
 }
 

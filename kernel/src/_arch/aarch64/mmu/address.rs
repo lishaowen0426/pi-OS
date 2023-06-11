@@ -28,6 +28,7 @@ macro_rules! impl_address {
         impl $name {
             pub const _4K: Self = Self(0x1000);
             pub const _2M: Self = Self(0x200000);
+            pub const _1G: Self = Self(0x40000000);
             pub fn value(&self) -> usize {
                 self.0
             }
@@ -206,6 +207,9 @@ pub trait AddressRange {
     where
         Self: Sized;
 
+    fn merge(&mut self, other: &Self) -> Result<(), ErrorCode>;
+    fn len(&self) -> Self::Address;
+
     fn is_4K(&self) -> bool;
     fn is_2M(&self) -> bool;
     fn set_start(&mut self, s: Self::Address);
@@ -235,6 +239,7 @@ macro_rules! impl_address_range {
                 }
             }
         }
+
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{}  ->  {}", self.start, self.end)
@@ -261,6 +266,10 @@ macro_rules! impl_address_range {
             }
             fn set_end(&mut self, e: $addr) {
                 self.end = e;
+            }
+
+            fn len(&self) -> Self::Address {
+                self.end() - self.start()
             }
 
             fn empty(&self) -> bool {
@@ -385,6 +394,19 @@ macro_rules! impl_address_range {
                 };
                 (front, back)
             }
+
+            fn merge(&mut self, other: &Self) -> Result<(), ErrorCode> {
+                if self.end == other.start {
+                    self.end = other.end;
+                    Ok(())
+                } else if other.end == self.start {
+                    self.start = other.start;
+                    Ok(())
+                } else {
+                    Err(EINVAL)
+                }
+            }
+
             fn is_4K(&self) -> bool {
                 self.size_in_bytes() == Self::Address::_4K.value()
             }
@@ -420,6 +442,12 @@ impl_address_range!(PaRange, PhysicalAddress);
 pub struct Mapped {
     pub va: VaRange,
     pub pa: PaRange,
+}
+
+impl Mapped {
+    pub fn new(va: VaRange, pa: PaRange) -> Self {
+        Self { va, pa }
+    }
 }
 
 impl fmt::Display for Mapped {
@@ -578,6 +606,16 @@ impl Physical for FrameNumber {
 }
 
 #[allow(non_snake_case)]
+impl PhysicalAddress {
+    pub fn to_4K_range(&self) -> PaRange {
+        PaRange::new(*self, *self + PhysicalAddress::_4K)
+    }
+    pub fn to_2M_range(&self) -> PaRange {
+        PaRange::new(*self, *self + PhysicalAddress::_2M)
+    }
+}
+
+#[allow(non_snake_case)]
 impl VirtualAddress {
     pub fn level1(&self) -> usize {
         (self.0 >> config::L1_INDEX_SHIFT) & config::INDEX_MASK
@@ -587,6 +625,13 @@ impl VirtualAddress {
     }
     pub fn level3(&self) -> usize {
         (self.0 >> config::L3_INDEX_SHIFT) & config::INDEX_MASK
+    }
+
+    pub fn to_4K_range(&self) -> VaRange {
+        VaRange::new(*self, *self + VirtualAddress::_4K)
+    }
+    pub fn to_2M_range(&self) -> VaRange {
+        VaRange::new(*self, *self + VirtualAddress::_2M)
     }
 
     pub fn set_level1<T>(&mut self, idx: T) -> &mut Self
@@ -807,6 +852,25 @@ mod tests {
             let (first, second) = va_range.split(40);
             assert_eq!(first, VaRange::new(start, start + 4 * 0x200000));
             assert_eq!(second, VaRange::new(start + 4 * 0x200000, end));
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 10 * 0x200000;
+            let mut va_range = VaRange::new(start, end);
+            let (first, second) = va_range.split(0);
+            assert_eq!(first, VaRange::new(start, start + 0));
+            assert_eq!(second, VaRange::new(start, end));
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 10 * 0x200000;
+            let mut va_range1 = VaRange::new(start, end);
+            let mut va_range2 = VaRange::new(end, end + 10 * 0x1000);
+            let mut va_range3 = VaRange::new(start, end);
+            va_range1.merge(&va_range2).unwrap();
+            assert_eq!(va_range1, VaRange::new(start, end + 10 * 0x1000));
+            va_range2.merge(&va_range3).unwrap();
+            assert_eq!(va_range2, VaRange::new(start, end + 10 * 0x1000));
         }
     }
 }

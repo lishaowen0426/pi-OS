@@ -27,6 +27,8 @@ use cache::*;
 use translation_entry::*;
 use translation_table::*;
 
+const INIT_HEAP_PAGE: usize = 6;
+
 extern "C" {
     fn clear_memory_range(start: usize, end_exclusive: usize);
 }
@@ -77,17 +79,6 @@ fn config_registers_el1() -> Result<(), ErrorCode> {
     Ok(())
 }
 
-#[repr(transparent)]
-struct Test {
-    a: [u8; 16],
-}
-impl Test {
-    fn new() -> Self {
-        Self {
-            a: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        }
-    }
-}
 pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     MMU.call_once(|| {
         MemoryManagementUnit::new(
@@ -105,28 +96,23 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
     boot_info_copy.free_frame.align_to_4K();
     boot_info_copy.higher_free_page.align_to_4K();
 
-    let pa = boot_info_copy.free_frame.pop_4K_front().unwrap();
-    let va = boot_info_copy.higher_free_page.pop_4K_front().unwrap();
+    let mut va_range: VaRange = Default::default();
 
-    println!("Allocated to heap allocator..");
-    println!("va: {:?}, pa: {}", va, pa);
+    for i in 0..INIT_HEAP_PAGE {
+        let pa = boot_info_copy.free_frame.pop_4K_front().unwrap();
+        let va = boot_info_copy.higher_free_page.pop_4K_front().unwrap();
 
-    MMU.get().unwrap().map(va, pa, RWNORMAL, BLOCK_4K).unwrap();
-    // let l3 = 0x90000 as *const u64;
-    unsafe {
-        // println!("using lower address");
-        // let e = core::ptr::read_volatile(l3.offset((509) as isize));
-        // println!("address = {:#018x}", ((e >> 12) << 12) & ((1 << 48) - 1));
-        // println!("e {:#066b}", e);
-        // let e = core::ptr::read_volatile(l3.offset((va.level3()) as isize));
-        // println!("address = {:#018x}", ((e >> 12) << 12) & ((1 << 48) - 1));
-        // println!("e {:#066b}", e);
+        let mapped = MMU.get().unwrap().map(va, pa, RWNORMAL, BLOCK_4K).unwrap();
+
+        if i == 0 {
+            va_range = mapped.va;
+        } else {
+            va_range.merge(&mapped.va);
+        }
     }
-    unsafe {
-        core::ptr::read_volatile(va.value() as *mut u64);
-    }
-    println!(" map success");
-    heap::heap_init(VaRange::new(va, va + VirtualAddress::_4K)).unwrap();
+    println!("Allocated to heap allocator {}", va_range);
+
+    heap::heap_init(va_range).unwrap();
 
     allocator::init(&boot_info_copy).unwrap();
 
@@ -175,7 +161,7 @@ impl MemoryManagementUnit {
         pa: PhysicalAddress,
         mt: &MemoryType,
         sz: &BlockSize,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<Mapped, ErrorCode> {
         if va.is_lower() {
             self.lower_l1.lock().map(va, pa, mt, sz)
         } else {
@@ -196,34 +182,33 @@ impl MemoryManagementUnit {
         mt: &MemoryType,
         region: &MemoryRegion,
     ) -> Result<Mapped, ErrorCode> {
+        println!("called kzalloc");
         let va = allocator::PAGE_ALLOCATOR
             .get()
             .unwrap()
             .allocate(sz, region)?;
         let pa = allocator::FRAME_ALLOCATOR.get().unwrap().allocate(sz)?;
-        self.map(va, pa, mt, sz)?;
+        self.map(va.start(), pa.start(), mt, sz)?;
 
         match *sz {
             BlockSize::_4K => {
                 unsafe {
-                    clear_memory_range(va.value(), (va + VirtualAddress::_4K).value());
+                    clear_memory_range(va.start().value(), va.end().value());
                 }
-                Ok(Mapped {
-                    va: VaRange::new(va, va + VirtualAddress::_4K),
-                    pa: PaRange::new(pa, pa + PhysicalAddress::_4K),
-                })
+                Ok(Mapped { va, pa })
             }
             BlockSize::_2M => {
                 unsafe {
-                    clear_memory_range(va.value(), (va + VirtualAddress::_2M).value());
+                    clear_memory_range(va.start().value(), va.end().value());
                 }
-                Ok(Mapped {
-                    va: VaRange::new(va, va + VirtualAddress::_2M),
-                    pa: PaRange::new(pa, pa + PhysicalAddress::_2M),
-                })
+                Ok(Mapped { va, pa })
             }
             _ => Err(ESUPPORTED),
         }
+    }
+
+    pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {
+        todo!()
     }
 }
 
@@ -234,6 +219,17 @@ pub static MMU: Once<MemoryManagementUnit> = Once::new();
 mod tests {
     use super::*;
     use test_macros::kernel_test;
+
+    struct Test {
+        arr: [u8; 1024],
+    }
+    impl Test {
+        fn new() -> Self {
+            Self { arr: [1; 1024] }
+        }
+    }
     #[kernel_test]
-    fn test_mmu() {}
+    fn test_mmu() {
+        let p = Box::new(Test::new());
+    }
 }
