@@ -1,10 +1,12 @@
 use crate::{
     bsp::{device_driver, mmio},
     driver as generic_driver,
+    memory::config,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 
-static GPIO: device_driver::GPIO = unsafe { device_driver::GPIO::new(mmio::GPIO_START) };
+static GPIO: device_driver::GPIO =
+    unsafe { device_driver::GPIO::new(config::VIRTUAL_PERIPHERAL_START + mmio::GPIO_OFFSET) };
 
 /// This must be called only after successful init of the GPIO driver.
 fn post_init_gpio() -> Result<(), &'static str> {

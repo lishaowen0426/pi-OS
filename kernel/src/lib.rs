@@ -40,6 +40,7 @@ mod driver;
 mod errno;
 mod exception;
 mod generics;
+mod interrupt;
 mod macros;
 mod memory;
 mod panic_wait;

@@ -1,4 +1,5 @@
 /// Only support 4K granule and the lookup starts from level 1
+use crate::bsp::mmio;
 use core::ops::Range;
 
 pub const WORD_SIZE: usize = 4; // 32bits
@@ -59,12 +60,11 @@ pub const HIGHER_L1_VIRTUAL_ADDRESS: usize = KERNEL_BASE
 
 pub const STACK_MMIO_L1_INDEX: usize = RECURSIVE_L1_INDEX - 1;
 
-#[cfg(feature = "bsp_rpi3")]
-pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0x3FFF_FFFF;
-#[cfg(feature = "bsp_rpi4")]
-pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = 0xFFFF_FFFF; // we assume pi4 has 4GB memory
-                                                              //
-pub const PHYSICAL_MEMORY_END_EXCLUSIVE: usize = PHYSICAL_MEMORY_END_INCLUSIVE + 1;
+pub const PHYSICAL_PERIPHERAL_START: usize = mmio::PHYSICAL_PERIPHERAL_START;
+
+pub const PHYSICAL_MEMORY_END_INCLUSIVE: usize = mmio::PHYSICAL_MEMORY_END_INCLUSIVE;
+
+pub const PHYSICAL_MEMORY_END_EXCLUSIVE: usize = mmio::PHYSICAL_MEMORY_END_EXCLUSIVE;
 
 pub const NUMBER_OF_FRAMES: usize = (PHYSICAL_MEMORY_END_INCLUSIVE >> SHIFT_4K) + 1;
 pub const NUMBER_OF_PAGES: usize = (0xFFFF_FFFF_FFFF >> SHIFT_4K) + 1;
@@ -73,7 +73,9 @@ const fn get_level2_index(va: usize) -> usize {
     (va >> L2_INDEX_SHIFT) & INDEX_MASK
 }
 
-pub const PHYSICAL_PERIPHERAL_START: usize = 0xFE00_0000;
+#[cfg(feature = "bsp_rpi3")]
+pub const VIRTUAL_PERIPHERAL_START: usize = PHYSICAL_PERIPHERAL_START;
+#[cfg(feature = "bsp_rpi4")]
 pub const VIRTUAL_PERIPHERAL_START: usize = KERNEL_BASE
     | (STACK_MMIO_L1_INDEX << L1_INDEX_SHIFT)
     | (get_level2_index(PHYSICAL_PERIPHERAL_START)) << L2_INDEX_SHIFT;

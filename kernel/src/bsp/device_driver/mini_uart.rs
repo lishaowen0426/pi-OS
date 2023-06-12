@@ -1,7 +1,11 @@
-use crate::{bsp::device_driver::utils::*, cpu::nop, memory::config};
+use crate::{
+    bsp::{device_driver::utils::*, mmio},
+    cpu::nop,
+    memory::config,
+};
 const MINI_UART_OFFSET: usize = 0x0021_5000;
-const PHYSICAL_MINI_UART_START: usize = config::PHYSICAL_PERIPHERAL_START + MINI_UART_OFFSET;
-const VIRTUAL_MINI_UART_START: usize = config::VIRTUAL_PERIPHERAL_START + MINI_UART_OFFSET;
+const PHYSICAL_MINI_UART_START: usize = config::PHYSICAL_PERIPHERAL_START + mmio::MINI_UART_OFFSET;
+const VIRTUAL_MINI_UART_START: usize = config::VIRTUAL_PERIPHERAL_START + mmio::MINI_UART_OFFSET;
 const VIRTUAL_PHYSICAL_DIFF: usize = VIRTUAL_MINI_UART_START - PHYSICAL_MINI_UART_START;
 
 const AUX_ENABLES: usize = VIRTUAL_MINI_UART_START + 0x4;
