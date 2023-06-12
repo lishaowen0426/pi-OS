@@ -34,7 +34,7 @@ pub mod mmio {
     pub const GPIO_OFFSET: usize = 0x0020_0000;
     pub const UART_OFFSET: usize = 0x0020_1000;
     pub const MINI_UART_OFFSET: usize = 0x0021_5000;
-    pub const IC_OFFSET: usize = 0x3F00B000 - PHYSICAL_PERIPHERAL_START;
+    pub const IC_OFFSET: usize = 0x3F00B200 - PHYSICAL_PERIPHERAL_START;
 }
 
 #[cfg(feature = "bsp_rpi4")]

@@ -110,6 +110,10 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
             | (507 << memory::config::L3_INDEX_SHIFT)
     );
 
+    exception::print_irq();
+    exception::local_irq_mask();
+    exception::print_irq();
+
     println!("Passed!");
 
     loop {}

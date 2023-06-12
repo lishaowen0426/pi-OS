@@ -1,8 +1,8 @@
-use crate::{errno::ErrorCode, exception::PrivilegeLevel};
+use crate::{errno::ErrorCode, exception::PrivilegeLevel, println};
 use aarch64_cpu::{asm::barrier, registers::*};
-use core::fmt;
+use core::{arch::asm, fmt};
 use tock_registers::{
-    interfaces::{ReadWriteable, Readable},
+    interfaces::{ReadWriteable, Readable, Writeable},
     registers::InMemoryRegister,
 };
 
@@ -280,6 +280,64 @@ extern "C" fn lower_aarch32_irq(e: &mut ExceptionContext) {
 #[no_mangle]
 extern "C" fn lower_aarch32_serror(e: &mut ExceptionContext) {
     default_serro_exception_handler(e);
+}
+
+const DAIF_BITS: u8 = 0b0011; // mask IRQ and FIQ
+
+#[inline(always)]
+pub fn local_irq_mask() {
+    unsafe {
+        asm!("msr DAIFSet, {arg}",
+            arg = const DAIF_BITS,
+            options(nomem, nostack),
+        );
+    }
+}
+#[inline(always)]
+pub fn local_irq_unmask() {
+    unsafe {
+        asm!("msr DAIFClr, {arg}",
+        arg = const DAIF_BITS,
+        options(nomem, nostack),
+        );
+    }
+}
+#[inline(always)]
+pub fn local_irq_mask_save() -> u64 {
+    let saved = DAIF.get();
+    local_irq_mask();
+    saved
+}
+#[inline(always)]
+pub fn local_irq_restore(daif: u64) {
+    DAIF.set(daif)
+}
+
+pub fn print_irq() {
+    let to_mask_str = |x| -> _ {
+        if x {
+            "Masked"
+        } else {
+            "Unmasked"
+        }
+    };
+
+    println!(
+        "            Debug  (D): {}",
+        to_mask_str(DAIF.is_set(DAIF::D))
+    );
+    println!(
+        "            SError (A): {}",
+        to_mask_str(DAIF.is_set(DAIF::A))
+    );
+    println!(
+        "            IRQ    (I): {}",
+        to_mask_str(DAIF.is_set(DAIF::I))
+    );
+    println!(
+        "            FIQ    (F): {}",
+        to_mask_str(DAIF.is_set(DAIF::F))
+    );
 }
 
 pub fn init() -> Result<(), ErrorCode> {
