@@ -1,14 +1,11 @@
 extern crate alloc;
 use crate::{
-    bsp::device_driver::interrupt_controller, errno::ErrorCode, synchronization::Spinlock,
+    bsp::device_driver::interrupt_controller,
+    errno::ErrorCode,
+    synchronization::{IRQSafeSpinlock, Spinlock},
 };
 use alloc::boxed::Box;
 use spin::{Once, Spin};
-
-pub struct IRQDescriptor {
-    num: interrupt_controller::IRQNum,
-    name: &'static str,
-}
 
 pub trait IRQHandler {
     fn handle(&self) -> Result<(), ErrorCode>;
@@ -16,25 +13,25 @@ pub trait IRQHandler {
 
 pub trait IRQController {
     fn init(&mut self) -> Result<(), ErrorCode>;
-    fn enable_timer(&self);
+    fn handle(&self) -> Result<(), ErrorCode>;
 }
 
 pub struct GenericIRQController {
-    controller: Spinlock<Box<dyn IRQController + Sync + Send>>,
+    controller: IRQSafeSpinlock<Box<dyn IRQController + Sync + Send>>,
 }
 
 impl GenericIRQController {
     fn new() -> Self {
         Self {
-            controller: Spinlock::new(Box::new(interrupt_controller::create())),
+            controller: IRQSafeSpinlock::new(Box::new(interrupt_controller::create())),
         }
-    }
-    pub fn enable_timer(&self) {
-        self.controller.lock().enable_timer()
     }
 
     pub fn init(&self) -> Result<(), ErrorCode> {
         self.controller.lock().init()
+    }
+    pub fn handle(&self) -> Result<(), ErrorCode> {
+        self.controller.lock().handle()
     }
 }
 

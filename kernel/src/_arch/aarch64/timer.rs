@@ -73,11 +73,22 @@ impl Timer {
         CNTP_CTL_EL0.modify(CNTP_CTL_EL0::IMASK.val(0) + CNTP_CTL_EL0::ENABLE.val(1));
         barrier::isb(barrier::SY);
     }
+
+    pub fn reset(&self) {
+        CNTP_TVAL_EL0.set(2 * self.frequency);
+        barrier::isb(barrier::SY);
+    }
 }
 
 pub fn init() -> Result<(), ErrorCode> {
     TIMER.call_once(|| Timer::new());
 
+    Ok(())
+}
+
+pub fn handle_interrupt() -> Result<(), ErrorCode> {
+    println!("handle timer");
+    TIMER.get().unwrap().reset();
     Ok(())
 }
 

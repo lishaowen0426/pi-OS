@@ -150,12 +150,8 @@ impl IRQController for BCMIC {
     fn init(&mut self) -> Result<(), ErrorCode> {
         Ok(())
     }
-    fn enable_timer(&self) {
-        TIMER.get().unwrap().enable();
-        self.rw_reg
-            .lock()
-            .EnableBasic
-            .modify(BasicIRQ::ARMTimer.val(1));
+    fn handle(&self) -> Result<(), ErrorCode> {
+        Ok(())
     }
 }
 unsafe impl Send for BCMIC {}

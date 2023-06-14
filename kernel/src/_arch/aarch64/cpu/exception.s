@@ -94,7 +94,7 @@ __exception_vector_start:
 .org 0x800
 
 __exception_restore_context:
-	ldr	w19,      [sp, #16 * 16]
+	ldr	x19,      [sp, #16 * 16]
 	ldp	lr,  x20, [sp, #16 * 15]
 
 	msr	SPSR_EL1, x19
