@@ -62,6 +62,51 @@ impl Bitfields for u64 {
         u64::trailing_zeros(*self) as usize
     }
 }
+impl Bitfields for u32 {
+    type Output = u32;
+    fn get_bit(&self, index: usize) -> Self::Output {
+        (*self >> index) & 0b1
+    }
+    fn get_bits(&self, range: Range<usize>) -> Self::Output {
+        let mask = (1 << (range.end - range.start)) - 1;
+        (*self >> range.start) & mask
+    }
+    fn set_bit(&mut self, index: usize, val: u64) {
+        let origin = *self;
+        let mut higher: u32 = 0;
+        if index < 31 {
+            higher = (origin >> (index + 1)) << (index + 1);
+        }
+        let lower = origin & ((1 << index) - 1);
+        let set: u32 = (val as u32 & 0b1) << index;
+        *self = higher | set | lower;
+    }
+    fn set_bits(&mut self, range: Range<usize>, val: u64) {
+        let origin = *self;
+        let mut higher: u32 = 0;
+        if range.end < 32 {
+            higher = (origin >> range.end) << range.end;
+        }
+        let lower = origin & ((1 << range.start) - 1);
+        let mask = (1 << (range.end - range.start)) - 1;
+        let set: u32 = (val as u32 & mask) << range.start;
+        *self = higher | set | lower;
+    }
+    fn trailing_zeros(&self) -> usize {
+        u32::trailing_zeros(*self) as usize
+    }
+    fn trailing_ones(&self) -> usize {
+        u32::trailing_ones(*self) as usize
+    }
+
+    fn first_zero(&self) -> usize {
+        let negated = !*self;
+        u32::trailing_zeros(negated) as usize
+    }
+    fn first_one(&self) -> usize {
+        u32::trailing_zeros(*self) as usize
+    }
+}
 
 // the rightmost bit is index 0
 impl Bitfields for usize {

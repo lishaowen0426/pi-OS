@@ -102,7 +102,7 @@ _start:
 
     bl init_mini_uart
 
-
+    bl .L_system_counter
     bl .L_map_lower_half
     bl .L_map_higher_half
     b  .L_enable_paging
@@ -112,6 +112,11 @@ _start:
 
 
 
+.L_system_counter:
+    adr_load           x0, SYSTEM_COUNTER_FREQUENCY
+    mrs 	       x1, CNTFRQ_EL0
+    str		       x1, [x0]
+    ret
 
 
 

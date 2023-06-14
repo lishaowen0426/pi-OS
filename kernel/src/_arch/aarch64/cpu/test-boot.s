@@ -30,10 +30,15 @@ _start:
     //adr_load    x0, __page_table_end_exclusive
     //bl     clear_memory_range
 
+    bl     .L_system_counter
     bl     .L_map_lower_half
     b      .L_enable_paging
 
-
+.L_system_counter:
+    adr_load           x0, SYSTEM_COUNTER_FREQUENCY
+    mrs 	       x1, CNTFRQ_EL0
+    str		       x1, [x0]
+    ret
 
 
 	// Infinitely wait for events (aka "park the core").
@@ -158,8 +163,7 @@ _start:
 
     isb                sy
 
-
-    adr_load                x0, __boot_core_stack_end_exclusive
+    adr_load           x0, __boot_core_stack_end_exclusive
     mov                sp, x0
     bl 		.L_prepare_boot_info
     b kernel_main
@@ -239,7 +243,7 @@ _start:
     //higher free page
     stp     	x1, x2, [sp, #16 * 10]
 
-   mov        x0, sp
+    mov        x0, sp
 
     ret
 

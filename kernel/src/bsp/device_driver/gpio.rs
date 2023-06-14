@@ -1,6 +1,4 @@
-use crate::{
-    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver, synchronization::Spinlock,
-};
+use crate::{driver, memory::MMIOWrapper, synchronization::Spinlock};
 
 use tock_registers::{
     interfaces::{ReadWriteable, Writeable},
@@ -87,7 +85,7 @@ register_structs! {
     }
 }
 
-type Registers = MMIODerefWrapper<RegisterBlock>;
+type Registers = MMIOWrapper<RegisterBlock>;
 
 struct GPIOInner {
     registers: Registers,

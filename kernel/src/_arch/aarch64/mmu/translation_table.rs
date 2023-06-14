@@ -2,7 +2,7 @@ use super::{
     address::*, allocator::*, cache::*, config, translation_entry::*, BlockSize, BLOCK_1G,
     BLOCK_2M, BLOCK_4K,
 };
-use crate::{errno::*, println, unsafe_println};
+use crate::{errno::*, println};
 use aarch64_cpu::{
     asm::barrier,
     registers::{TTBR0_EL1, TTBR1_EL1},
@@ -287,14 +287,14 @@ fn get_ttbr0() -> usize {
     TTBR0_EL1.get_baddr() as usize
 }
 pub fn set_ttbr0(pa: PhysicalAddress, asid: u8) {
-    unsafe_println!("Set up TTBR0_EL1 with pa {}, ASID = {}", pa, asid);
+    println!("Set up TTBR0_EL1 with pa {}, ASID = {}", pa, asid);
     TTBR0_EL1.modify(TTBR0_EL1::ASID.val(asid as u64));
     TTBR0_EL1.set_baddr(pa.value() as u64);
     barrier::isb(barrier::SY);
     A64TLB::invalidate_all();
 }
 pub fn set_ttbr1(pa: PhysicalAddress, asid: u8) {
-    unsafe_println!("Set up TTBR1_EL1 with pa {}, ASID = {}", pa, asid);
+    println!("Set up TTBR1_EL1 with pa {}, ASID = {}", pa, asid);
     TTBR1_EL1.modify(TTBR1_EL1::ASID.val(asid as u64));
     TTBR1_EL1.set_baddr(pa.value() as u64);
     barrier::isb(barrier::SY);

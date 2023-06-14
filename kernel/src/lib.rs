@@ -49,8 +49,9 @@ mod synchronization;
 mod utils;
 
 use aarch64_cpu::{asm, registers::*};
-use core::fmt;
+use core::{fmt, time::Duration};
 use generics::*;
+use interrupt::IRQ_CONTROLLER;
 use memory::address::*;
 use tock_registers::interfaces::Writeable;
 // 32 bytes * 4 + 16 + 16 + 16
@@ -93,26 +94,23 @@ impl fmt::Debug for BootInfo {
 #[cfg(not(test))]
 #[no_mangle]
 pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
-    exception::init().unwrap();
     console::init().unwrap();
+    exception::init().unwrap();
     println!("Boot info:");
     println!("{}", boot_info);
     memory::init(boot_info).unwrap();
-    println_1!(
-        "Free 4K frame: {}",
-        boot_info.free_frame.count_4K().unwrap()
-    );
+    cpu::timer::init().unwrap();
+    cpu::timer::TIMER.get().unwrap().enable();
+
     println!(
-        "end : {:018x}",
-        memory::config::KERNEL_BASE
-            | (510 << memory::config::L1_INDEX_SHIFT)
-            | (495 << memory::config::L2_INDEX_SHIFT)
-            | (507 << memory::config::L3_INDEX_SHIFT)
+        "System counter frequency {}",
+        cpu::timer::system_counter_frequency()
     );
 
-    exception::print_irq();
-    exception::local_irq_mask();
-    exception::print_irq();
+    let boot_duration = cpu::timer::TIMER.get().unwrap().now();
+    println!("boot takes {} micros", boot_duration.as_micros());
+
+    interrupt::init().unwrap();
 
     println!("Passed!");
 
@@ -142,6 +140,17 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     println!("Boot info:");
     println!("{}", boot_info);
     memory::init(boot_info).unwrap();
+    cpu::timer::init().unwrap();
+
+    println!(
+        "System counter frequency {}",
+        cpu::timer::system_counter_frequency()
+    );
+
+    let boot_duration = cpu::timer::TIMER.get().unwrap().now();
+    println!("boot takes {} micros", boot_duration.as_micros());
+
+    interrupt::init().unwrap();
 
     test_main();
 

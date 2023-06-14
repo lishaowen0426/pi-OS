@@ -2,14 +2,19 @@
 
 use crate::{
     bsp::mmio,
+    cpu::timer::TIMER,
+    interrupt::IRQController,
     memory::{config, MMIOWrapper},
 };
 
 use tock_registers::{
-    interfaces::{Readable, Writeable},
+    interfaces::{ReadWriteable, Readable, Writeable},
     register_bitfields, register_structs,
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
+
+use crate::{errno::ErrorCode, synchronization::IRQSafeSpinlock};
+use aarch64_cpu::registers::*;
 
 const IC_VIRTUAL_START: usize = config::VIRTUAL_PERIPHERAL_START + mmio::IC_OFFSET;
 
@@ -106,18 +111,52 @@ register_structs!(
 register_structs!(
     #[allow(non_snake_case)]
     RWRegisterBlock {
+        (0x000 => _reserved),
         (0x00C => FIQControl: ReadWrite<u32, FIQControl::Register> ),
-        (0x010 => Enable1: WriteOnly<u32, IRQ1>),
-        (0x014 => Enable2: WriteOnly<u32, IRQ2>),
-        (0x018 => EnableBasic: WriteOnly<u32, BasicIRQ::Register>),
-        (0x01C => Disable1: WriteOnly<u32, IRQ1>),
-        (0x020 => Disable2: WriteOnly<u32, IRQ2>),
-        (0x024 => DisableBasic: WriteOnly<u32, BasicIRQ::Register>),
+        (0x010 => Enable1: ReadWrite<u32, IRQ1::Register>),
+        (0x014 => Enable2: ReadWrite<u32, IRQ2::Register>),
+        (0x018 => EnableBasic: ReadWrite<u32, BasicIRQ::Register>),
+        (0x01C => Disable1: ReadWrite<u32, IRQ1::Register>),
+        (0x020 => Disable2: ReadWrite<u32, IRQ2::Register>),
+        (0x024 => DisableBasic: ReadWrite<u32, BasicIRQ::Register>),
         (0x028 => @END),
     }
 );
 
-struct BCMIC {
-    ro_reg: MMIOWrapper<RORegisterBlock>,
-    rw_reg: MMIOWrapper<RWRegisterBlock>,
+pub enum IRQNum {
+    ARM(u8),
+    GPU(u8),
 }
+
+pub struct BCMIC {
+    ro_reg: MMIOWrapper<RORegisterBlock>,
+    rw_reg: IRQSafeSpinlock<MMIOWrapper<RWRegisterBlock>>,
+}
+
+impl BCMIC {
+    fn new() -> Self {
+        Self {
+            ro_reg: MMIOWrapper::new(IC_VIRTUAL_START),
+            rw_reg: IRQSafeSpinlock::new(MMIOWrapper::new(IC_VIRTUAL_START)),
+        }
+    }
+}
+
+pub fn create() -> BCMIC {
+    BCMIC::new()
+}
+
+impl IRQController for BCMIC {
+    fn init(&mut self) -> Result<(), ErrorCode> {
+        Ok(())
+    }
+    fn enable_timer(&self) {
+        TIMER.get().unwrap().enable();
+        self.rw_reg
+            .lock()
+            .EnableBasic
+            .modify(BasicIRQ::ARMTimer.val(1));
+    }
+}
+unsafe impl Send for BCMIC {}
+unsafe impl Sync for BCMIC {}

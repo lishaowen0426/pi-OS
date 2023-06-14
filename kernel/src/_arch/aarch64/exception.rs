@@ -343,8 +343,9 @@ pub fn print_irq() {
 pub fn init() -> Result<(), ErrorCode> {
     // we mask all Interrupts when switch to el1 from el2
     // here we unmask them
-    DAIF.modify(DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked);
-    barrier::isb(barrier::SY);
+    // DAIF.modify(DAIF::D::Unmasked + DAIF::A::Unmasked + DAIF::I::Unmasked + DAIF::F::Unmasked);
+    // barrier::isb(barrier::SY);
+    print_irq();
 
     Ok(())
 }
@@ -353,7 +354,6 @@ pub fn init() -> Result<(), ErrorCode> {
 #[allow(unused_imports, unused_variables, dead_code)]
 mod tests {
     use super::*;
-    use crate::{unsafe_println, unsafe_println_0};
     use test_macros::kernel_test;
     use tock_registers::{
         interfaces::{ReadWriteable, Readable, Writeable},

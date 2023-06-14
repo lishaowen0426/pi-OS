@@ -7,8 +7,13 @@
 #[cfg(target_arch = "aarch64")]
 #[path = "_arch/aarch64/cpu.rs"]
 mod arch_cpu;
-
 pub use arch_cpu::*;
+
+#[cfg(target_arch = "aarch64")]
+#[path = "_arch/aarch64/timer.rs"]
+pub mod arch_timer;
+
+pub use arch_timer as timer;
 
 #[cfg(feature = "bsp_rpi3")]
 pub use arch_cpu::spin_for_cycles;

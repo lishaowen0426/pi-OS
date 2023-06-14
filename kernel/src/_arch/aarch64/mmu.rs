@@ -1,8 +1,9 @@
 use crate::{errno::*, println, BootInfo};
 use aarch64_cpu::registers::*;
-use spin::{mutex::SpinMutex, once::Once};
+use spin::once::Once;
 use tock_registers::interfaces::{Readable, Writeable};
 extern crate alloc;
+use crate::synchronization::Spinlock;
 use alloc::boxed::Box;
 
 #[path = "mmu/address.rs"]
@@ -139,8 +140,8 @@ pub static HIGHER_PAGE: &MemoryRegion = &MemoryRegion::Higher;
 pub static LOWER_PAGE: &MemoryRegion = &MemoryRegion::Lower;
 
 pub struct MemoryManagementUnit {
-    lower_l1: SpinMutex<UnsafeTranslationTable<Level1>>,
-    higher_l1: SpinMutex<UnsafeTranslationTable<Level1>>,
+    lower_l1: Spinlock<UnsafeTranslationTable<Level1>>,
+    higher_l1: Spinlock<UnsafeTranslationTable<Level1>>,
     cache: A64CacheSet,
 }
 impl MemoryManagementUnit {
@@ -149,8 +150,8 @@ impl MemoryManagementUnit {
         higher_l1_table: UnsafeTranslationTable<Level1>,
     ) -> Self {
         Self {
-            lower_l1: SpinMutex::new(lower_l1_table),
-            higher_l1: SpinMutex::new(higher_l1_table),
+            lower_l1: Spinlock::new(lower_l1_table),
+            higher_l1: Spinlock::new(higher_l1_table),
             cache: A64CacheSet::new().unwrap(),
         }
     }

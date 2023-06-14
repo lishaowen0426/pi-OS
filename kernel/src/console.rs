@@ -1,12 +1,12 @@
-use crate::{bsp::device_driver::MiniUartInner, errno::ErrorCode};
+use crate::{bsp::device_driver::MiniUartInner, errno::ErrorCode, synchronization::Spinlock};
 use core::fmt;
-use spin::{mutex::SpinMutex, once::Once};
+use spin::once::Once;
 
 pub struct Console<T>
 where
     T: fmt::Write,
 {
-    io: SpinMutex<T>,
+    io: Spinlock<T>,
 }
 
 impl<T> Console<T>
@@ -15,7 +15,7 @@ where
 {
     pub fn new(inner: T) -> Self {
         Self {
-            io: SpinMutex::new(inner),
+            io: Spinlock::new(inner),
         }
     }
     pub fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result {
@@ -27,7 +27,7 @@ pub static CONSOLE: Once<Console<MiniUartInner>> = Once::new();
 
 pub fn init() -> Result<(), ErrorCode> {
     CONSOLE.call_once(|| Console {
-        io: SpinMutex::new(MiniUartInner::new()),
+        io: Spinlock::new(MiniUartInner::new()),
     });
     Ok(())
 }
@@ -49,5 +49,3 @@ impl core::fmt::Write for QemuConsole {
         Ok(())
     }
 }
-
-pub use crate::bsp::device_driver::UNSAFE_MINI_UART as UNSAFE_CONSOLE;
