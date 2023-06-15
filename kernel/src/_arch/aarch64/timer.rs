@@ -1,6 +1,6 @@
 use crate::{errno::ErrorCode, println, scheduler::*, synchronization::Spinlock};
 use aarch64_cpu::{asm::barrier, registers::*};
-use core::{num::NonZeroU64, ops::Div, time::Duration};
+use core::{arch::asm, num::NonZeroU64, ops::Div, time::Duration};
 use spin::once::Once;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -93,11 +93,20 @@ pub fn init() -> Result<(), ErrorCode> {
 
 pub fn handle_interrupt() -> Result<(), ErrorCode> {
     println!("handle timer");
+    // println!("handle interrupt sp {:#018x}", SP.get());
+    println!("spsel {}", SPSel.get());
+    let mut sp_el1: u64 = 0;
+    unsafe {
+        asm!("mrs {x} , SP_EL1",
+            x = out(reg) sp_el1,
+        );
+    }
+    println!("handle interrupt sp_el1 {:#018x}", sp_el1);
     TIMER.get().unwrap().disable();
     let task = SCHEDULER.get().unwrap().schedule();
     let buf = [0u64; 13];
     unsafe {
-        __cpu_switch_to(buf.as_ptr() as *mut Task, task);
+        //__cpu_switch_to(buf.as_ptr() as *mut Task, task);
     }
     Ok(())
 }

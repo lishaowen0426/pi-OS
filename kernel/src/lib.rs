@@ -55,7 +55,7 @@ use core::{fmt, time::Duration};
 use generics::*;
 use interrupt::IRQ_CONTROLLER;
 use memory::address::*;
-use tock_registers::interfaces::Writeable;
+use tock_registers::interfaces::{Readable, Writeable};
 // 32 bytes * 4 + 16 + 16 + 16
 #[derive(Copy, Clone)]
 #[repr(C)]
