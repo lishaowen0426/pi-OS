@@ -3,7 +3,7 @@ extern crate alloc;
 use crate::{
     bsp::mmio,
     cpu::{timer, timer::TIMER},
-    errno::ErrorCode,
+    errno::{ErrorCode, ESUPPORTED},
     exception,
     interrupt::IRQController,
     memory::{config, MMIOWrapper},
@@ -11,6 +11,7 @@ use crate::{
     utils::bitfields::Bitfields,
 };
 use alloc::boxed::Box;
+use intrusive_collections::{intrusive_adapter, Bound, KeyAdapter, PointerOps, RBTree, RBTreeLink};
 use tock_registers::{
     interfaces::{ReadWriteable, Readable, Writeable},
     register_bitfields, register_structs,
@@ -214,7 +215,7 @@ const GICC_OFFSET: usize = 0xFF842000 - config::PHYSICAL_PERIPHERAL_START;
 const GICD_VIRTUAL_START: usize = config::VIRTUAL_PERIPHERAL_START + GICD_OFFSET;
 const GICC_VIRTUAL_START: usize = config::VIRTUAL_PERIPHERAL_START + GICC_OFFSET;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum IRQNum {
     PPI(u32),
     SPI(u32),
@@ -239,8 +240,7 @@ impl IRQNum {
     }
 }
 
-static CORE_PS_TIMER_IRQ: IRQNum = IRQNum::PPI(30);
-static VC_TIMER_IRQ: IRQNum = IRQNum::SPI(96);
+const CORE_PS_TIMER_IRQ: IRQNum = IRQNum::PPI(30);
 
 pub struct IRQDescriptor {
     num: IRQNum,
@@ -300,6 +300,13 @@ impl GIC400 {
         enabled.set_bit(offset, 1);
         self.gicd.ISEnable[idx].set(enabled);
     }
+
+    fn dispatch(&self, irq: IRQNum) -> Result<(), ErrorCode> {
+        match irq {
+            CORE_PS_TIMER_IRQ => (GIC400_HANDLER[0].handleFn)(),
+            _ => Err(ESUPPORTED),
+        }
+    }
 }
 
 pub fn create() -> GIC400 {
@@ -344,7 +351,7 @@ impl IRQController for GIC400 {
         self.enable(&CORE_PS_TIMER_IRQ);
 
         // mask all interrupts other than ones with the highest priority
-        self.gicc.Pmr.modify(GICC_PMR::Priority::P15);
+        self.gicc.Pmr.modify(GICC_PMR::Priority::P1);
 
         // enable GICD and GICC
         self.gicd.Ctlr.modify(GICD_CTLR::EnableGrp0::forwarded);
@@ -359,11 +366,12 @@ impl IRQController for GIC400 {
         let interrupt_id = iar & 0b11111111111;
         let cpu_id = (iar >> 10) & 0b111;
         println!("IRQ ID{}, CPU ID{}", interrupt_id, cpu_id);
-        (GIC400_HANDLER[0].handleFn)().unwrap();
+        let result = self.dispatch(IRQNum::from(interrupt_id));
+
         self.gicc
             .Eoir
             .write(GICC_EOIR::EOIINTID.val(interrupt_id) + GICC_EOIR::CPUID.val(cpu_id));
-        Ok(())
+        result
     }
 }
 unsafe impl Send for GIC400 {}

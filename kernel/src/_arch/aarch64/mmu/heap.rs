@@ -293,16 +293,16 @@ impl HeapFrontend {
     //
     pub fn pick_size_class(v: u64) -> Log2SizeClass {
         match v {
-            0..=8 => Log2SizeClass::SZ_8,
-            8..=16 => Log2SizeClass::SZ_16,
-            16..=32 => Log2SizeClass::SZ_32,
-            32..=64 => Log2SizeClass::SZ_64,
-            64..=128 => Log2SizeClass::SZ_128,
-            128..=256 => Log2SizeClass::SZ_256,
-            256..=512 => Log2SizeClass::SZ_512,
-            512..=1024 => Log2SizeClass::SZ_1024,
-            1024..=2048 => Log2SizeClass::SZ_2048,
-            2048..=4000 => Log2SizeClass::SZ_LARGE,
+            0..9 => Log2SizeClass::SZ_8,
+            9..17 => Log2SizeClass::SZ_16,
+            17..33 => Log2SizeClass::SZ_32,
+            33..65 => Log2SizeClass::SZ_64,
+            65..129 => Log2SizeClass::SZ_128,
+            129..257 => Log2SizeClass::SZ_256,
+            257..513 => Log2SizeClass::SZ_512,
+            513..1025 => Log2SizeClass::SZ_1024,
+            1025..2049 => Log2SizeClass::SZ_2048,
+            2049..4000 => Log2SizeClass::SZ_LARGE,
             _ => Log2SizeClass::Undefined,
         }
     }
@@ -330,7 +330,6 @@ impl HeapFrontend {
 
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
         let sz = Self::pick_size_class(layout.size() as u64) as usize;
-        println!("sz{}, {:?}", sz, layout);
         if (sz - 3) >= self.sc_allocator.len() {
             return None;
         }
