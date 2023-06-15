@@ -33,7 +33,7 @@ SECTIONS
 
 
     /***********************************************************************************************
-    * Code + RO Data 
+    * Code + RO Data
     ***********************************************************************************************/
     __code_start = .;
     .text ALIGN(4K) : AT (ADDR(.text) - KERNEL_BASE)
@@ -43,12 +43,13 @@ SECTIONS
         __kernel_main = .;
         *(.text.kernel_main)
         *(.text._exception)
+        *(.text._context)
         *(.text*)
     } :segment_code
 
     .rodata : AT (ADDR(.rodata) - KERNEL_BASE)
-    { 
-        *(.rodata*) 
+    {
+        *(.rodata*)
         . = ALIGN(4K);
         __code_end_exclusive = .;
     } :segment_code
@@ -66,7 +67,7 @@ SECTIONS
     }:segment_data
 
 
-    .bss ALIGN(4K) (NOLOAD) : AT (ADDR(.bss) - KERNEL_BASE) 
+    .bss ALIGN(4K) (NOLOAD) : AT (ADDR(.bss) - KERNEL_BASE)
     {
         __bss_start = .;
         *(.bss*);
@@ -87,13 +88,13 @@ SECTIONS
     }: segment_table
 
 
-    .stack ALIGN(4K) (NOLOAD) : AT (ADDR(.stack) - KERNEL_BASE) 
+    .stack ALIGN(4K) (NOLOAD) : AT (ADDR(.stack) - KERNEL_BASE)
     {
         __stack_bottom = . + 4K; /*one page guard*/
         *(stack);
         __stack_top = .;
     }: segment_stack
-    
+
 
 
     /***********************************************************************************************

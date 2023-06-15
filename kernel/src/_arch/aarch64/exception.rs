@@ -244,7 +244,6 @@ extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 #[no_mangle]
 extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     IRQ_CONTROLLER.get().unwrap().handle().unwrap();
-    // default_irq_exception_handler(e);
 }
 
 #[no_mangle]

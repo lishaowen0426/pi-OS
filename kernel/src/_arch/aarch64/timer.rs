@@ -1,4 +1,4 @@
-use crate::{errno::ErrorCode, println, synchronization::Spinlock};
+use crate::{errno::ErrorCode, println, scheduler::*, synchronization::Spinlock};
 use aarch64_cpu::{asm::barrier, registers::*};
 use core::{num::NonZeroU64, ops::Div, time::Duration};
 use spin::once::Once;
@@ -78,6 +78,11 @@ impl Timer {
         CNTP_TVAL_EL0.set(2 * self.frequency);
         barrier::isb(barrier::SY);
     }
+
+    pub fn disable(&self) {
+        CNTP_CTL_EL0.modify(CNTP_CTL_EL0::IMASK.val(1) + CNTP_CTL_EL0::ENABLE.val(0));
+        barrier::isb(barrier::SY);
+    }
 }
 
 pub fn init() -> Result<(), ErrorCode> {
@@ -88,7 +93,12 @@ pub fn init() -> Result<(), ErrorCode> {
 
 pub fn handle_interrupt() -> Result<(), ErrorCode> {
     println!("handle timer");
-    TIMER.get().unwrap().reset();
+    TIMER.get().unwrap().disable();
+    let task = SCHEDULER.get().unwrap().schedule();
+    let buf = [0u64; 13];
+    unsafe {
+        __cpu_switch_to(buf.as_ptr() as *mut Task, task);
+    }
     Ok(())
 }
 

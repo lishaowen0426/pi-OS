@@ -58,6 +58,7 @@ ttbr1_el1   0xffffff8000000000   ----++---------------+                   |     
                                                                                                                                                            */
 .include "defines.s"
 .include "macro.s"
+.include "context_switch.s"
 
 
 

@@ -25,7 +25,7 @@ pub mod heap;
 use address::*;
 use allocator::*;
 use cache::*;
-use translation_entry::*;
+pub use translation_entry::*;
 use translation_table::*;
 
 const INIT_HEAP_PAGE: usize = 6;

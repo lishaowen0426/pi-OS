@@ -46,6 +46,7 @@ mod macros;
 mod memory;
 mod panic_wait;
 mod print;
+mod scheduler;
 mod synchronization;
 mod utils;
 
@@ -113,6 +114,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
 
     interrupt::init().unwrap();
     cpu::timer::TIMER.get().unwrap().enable();
+    scheduler::init();
 
     println!("Passed!");
 
