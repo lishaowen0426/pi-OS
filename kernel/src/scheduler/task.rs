@@ -1,34 +1,25 @@
 use crate::{
-    generics::{DoublyLinkable, DoublyLinkedList, Link},
+    generics::{DoublyLink, DoublyLinkable, DoublyLinkedList, Link},
     memory,
     memory::{address::AddressRange, *},
     scheduler::context_switch::Context,
 };
+use test_macros::doubly_linkable;
 
+#[doubly_linkable]
+#[derive(Default)]
 #[repr(C)]
 pub struct Task {
     ctx: Context,
-    prev_link: Link<Task>,
-    next_link: Link<Task>,
-}
-
-impl DoublyLinkable for Task {
-    type T = Self;
-    fn set_prev(&mut self, link: Link<Self::T>) {
-        self.prev_link = link;
-    }
-    fn set_next(&mut self, link: Link<Self::T>) {
-        self.next_link = link;
-    }
-    fn prev(&self) -> Link<Self::T> {
-        self.prev_link
-    }
-    fn next(&self) -> Link<Self::T> {
-        self.next_link
-    }
 }
 
 impl Task {
+    pub fn set_sp(&mut self, sp: u64) {
+        self.ctx.sp = sp;
+    }
+    pub fn set_lr(&mut self, lr: u64) {
+        self.ctx.lr = lr;
+    }
     pub fn new(lr: u64) -> Self {
         let mapped = MMU
             .get()
@@ -41,8 +32,7 @@ impl Task {
                 sp: mapped.va.start().value() as u64,
                 lr,
             },
-            prev_link: Link::none(),
-            next_link: Link::none(),
+            ..Default::default()
         }
     }
     pub fn new_with_sp(sp: u64, lr: u64) -> Self {
@@ -52,8 +42,7 @@ impl Task {
                 sp,
                 lr,
             },
-            prev_link: Link::none(),
-            next_link: Link::none(),
+            ..Default::default()
         }
     }
 }

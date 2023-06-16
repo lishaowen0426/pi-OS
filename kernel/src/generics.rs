@@ -96,10 +96,19 @@ impl<T> Link<T> {
         p
     }
 }
-
+#[repr(C)]
 pub struct DoublyLink<T> {
     pub prev: Link<T>,
     pub next: Link<T>,
+}
+
+impl<T> Default for DoublyLink<T> {
+    fn default() -> Self {
+        Self {
+            prev: Link::none(),
+            next: Link::none(),
+        }
+    }
 }
 
 pub trait DoublyLinkable {

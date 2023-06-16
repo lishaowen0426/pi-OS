@@ -183,7 +183,6 @@ impl MemoryManagementUnit {
         mt: &MemoryType,
         region: &MemoryRegion,
     ) -> Result<Mapped, ErrorCode> {
-        println!("called kzalloc");
         let va = allocator::PAGE_ALLOCATOR
             .get()
             .unwrap()
