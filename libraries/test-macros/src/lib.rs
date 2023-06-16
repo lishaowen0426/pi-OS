@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_error::{abort, abort_call_site, proc_macro_error};
 use quote::quote;
-use syn::{parse_macro_input, Ident, ItemFn, ItemStruct};
+use syn::{parse::Parser, parse_macro_input, Expr::Field, Ident, ItemFn, ItemStruct};
 
 #[proc_macro_attribute]
 pub fn kernel_test(_attr: TokenStream, input: TokenStream) -> TokenStream {
@@ -25,14 +25,22 @@ pub fn kernel_test(_attr: TokenStream, input: TokenStream) -> TokenStream {
     .into()
 }
 
-fn parse_doubly_linkable(item: proc_macro2::TokenStream) -> ItemStruct {
-    match syn::parse2::<ItemStruct>(item) {
-        Ok(s) => s,
-        Err(e) => abort_call_site!("{}", e; help="DoublyLinkable can only be attached to struct"),
+fn add_doubly_linkable(item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let f = syn::Field::parse_named
+        .parse2(quote! {pub doubly_link:DoublyLink<Self>})
+        .unwrap();
+
+    let mut item_struct = syn::parse2::<ItemStruct>(item).unwrap();
+
+    if let syn::Fields::Named(ref mut fields) = item_struct.fields {
+        fields.named.push(f);
     }
+
+    quote!(#item_struct)
 }
 
-fn imply_double_linkable(item: ItemStruct) -> proc_macro2::TokenStream {
+fn impl_double_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let item = syn::parse2::<ItemStruct>(tokens).unwrap();
     let mut found = false;
     for f in item.fields.iter() {
         if let Some(id) = &f.ident {
@@ -71,11 +79,15 @@ fn imply_double_linkable(item: ItemStruct) -> proc_macro2::TokenStream {
 }
 
 #[proc_macro_error]
-#[proc_macro_derive(DoublyLinkable)]
-pub fn doubly_linkable(item: TokenStream) -> TokenStream {
-    let ast = parse_doubly_linkable(item.into());
-    let impl_token = imply_double_linkable(ast);
-    impl_token.into()
+#[proc_macro_attribute]
+pub fn doubly_linkable(input: TokenStream, annotated_item: TokenStream) -> TokenStream {
+    let ast = add_doubly_linkable(annotated_item.into());
+    let impl_token = impl_double_linkable(ast.clone());
+    quote!(
+        #ast
+        #impl_token
+    )
+    .into()
 }
 
 #[cfg(test)]
@@ -87,16 +99,9 @@ mod tests {
 
     #[test]
     fn test_doublylinkable() {
-        {
-            parse_doubly_linkable(quote!(
-                pub struct BLTest {
-                    doubly_link: DoublyLink,
-                }
-            ));
-        }
-        {
-            let t = trybuild::TestCases::new();
-            t.compile_fail("test_cases/*.rs");
-        }
+        let t = add_doubly_linkable(quote!(
+            pub struct Test {}
+        ));
+        impl_double_linkable(t.clone());
     }
 }

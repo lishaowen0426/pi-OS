@@ -13,7 +13,7 @@ use core::{
 };
 use intrusive_collections::linked_list::AtomicLinkOps;
 use spin::{mutex::SpinMutex, once::Once, Spin};
-use test_macros::DoublyLinkable;
+use test_macros::doubly_linkable;
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
@@ -22,7 +22,7 @@ const SLABS_LENGTH_LIMIT: usize = 4; // the maximum number of object page a szal
 
 type AllocationMap = [u64; 8];
 
-#[derive(DoublyLinkable)]
+#[doubly_linkable]
 #[repr(C)]
 struct ObjectPage<const SIZE: usize>
 where
@@ -42,8 +42,6 @@ where
     // this is actually the first element
     allocated: AllocationMap,
     count: usize,
-
-    doubly_link: DoublyLink<ObjectPage<SIZE>>,
 }
 
 impl<const SIZE: usize> ObjectPage<SIZE>
