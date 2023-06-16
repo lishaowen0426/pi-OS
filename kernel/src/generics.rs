@@ -97,6 +97,11 @@ impl<T> Link<T> {
     }
 }
 
+pub struct DoublyLink<T> {
+    pub prev: Link<T>,
+    pub next: Link<T>,
+}
+
 pub trait DoublyLinkable {
     type T;
     fn set_prev(&mut self, link: Link<Self::T>);

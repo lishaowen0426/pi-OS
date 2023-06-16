@@ -1,7 +1,8 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
+use proc_macro_error::{abort, abort_call_site, proc_macro_error};
 use quote::quote;
-use syn::{parse_macro_input, Ident,  ItemFn};
+use syn::{parse_macro_input, Ident, ItemFn, ItemStruct};
 
 #[proc_macro_attribute]
 pub fn kernel_test(_attr: TokenStream, input: TokenStream) -> TokenStream {
@@ -22,4 +23,80 @@ pub fn kernel_test(_attr: TokenStream, input: TokenStream) -> TokenStream {
         };
     )
     .into()
+}
+
+fn parse_doubly_linkable(item: proc_macro2::TokenStream) -> ItemStruct {
+    match syn::parse2::<ItemStruct>(item) {
+        Ok(s) => s,
+        Err(e) => abort_call_site!("{}", e; help="DoublyLinkable can only be attached to struct"),
+    }
+}
+
+fn imply_double_linkable(item: ItemStruct) -> proc_macro2::TokenStream {
+    let mut found = false;
+    for f in item.fields.iter() {
+        if let Some(id) = &f.ident {
+            if id.to_string().eq("doubly_link") {
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if !found {
+        abort_call_site!("Struct does not contain the field doubly_link");
+    }
+
+    let struct_name = item.ident;
+    let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
+
+    quote!(
+        impl #impl_generics DoublyLinkable for #struct_name #ty_generics #where_clause{
+            type T = Self;
+            fn set_prev(&mut self, link: Link<Self::T>){
+                self.doubly_link.prev = link;
+            }
+            fn set_next(&mut self, link: Link<Self::T>){
+                self.doubly_link.next = link;
+            }
+
+            fn prev(&self) -> Link<Self::T>{
+                self.doubly_link.prev
+            }
+            fn next(&self) -> Link<Self::T>{
+                self.doubly_link.next
+            }
+        }
+    )
+}
+
+#[proc_macro_error]
+#[proc_macro_derive(DoublyLinkable)]
+pub fn doubly_linkable(item: TokenStream) -> TokenStream {
+    let ast = parse_doubly_linkable(item.into());
+    let impl_token = imply_double_linkable(ast);
+    impl_token.into()
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    struct DoublyLink {}
+
+    #[test]
+    fn test_doublylinkable() {
+        {
+            parse_doubly_linkable(quote!(
+                pub struct BLTest {
+                    doubly_link: DoublyLink,
+                }
+            ));
+        }
+        {
+            let t = trybuild::TestCases::new();
+            t.compile_fail("test_cases/*.rs");
+        }
+    }
 }

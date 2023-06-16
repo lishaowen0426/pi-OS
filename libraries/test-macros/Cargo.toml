@@ -13,3 +13,5 @@ proc-macro2 = "1.x"
 quote = "1.x"
 syn = {version = "1.x", features = ["full"]}
 test-types = {path = "../test-types"}
+proc-macro-error = "1.0.4"
+trybuild = "1.0.80"

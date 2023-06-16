@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     errno::*,
-    generics::{DoublyLinkable, DoublyLinkedList, Link},
+    generics::{DoublyLink, DoublyLinkable, DoublyLinkedList, Link},
     print, println, static_vector, type_enum,
     utils::bitfields::Bitfields,
 };
@@ -13,6 +13,7 @@ use core::{
 };
 use intrusive_collections::linked_list::AtomicLinkOps;
 use spin::{mutex::SpinMutex, once::Once, Spin};
+use test_macros::DoublyLinkable;
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
@@ -21,6 +22,7 @@ const SLABS_LENGTH_LIMIT: usize = 4; // the maximum number of object page a szal
 
 type AllocationMap = [u64; 8];
 
+#[derive(DoublyLinkable)]
 #[repr(C)]
 struct ObjectPage<const SIZE: usize>
 where
@@ -40,8 +42,8 @@ where
     // this is actually the first element
     allocated: AllocationMap,
     count: usize,
-    prev_link: Link<ObjectPage<SIZE>>,
-    next_link: Link<ObjectPage<SIZE>>,
+
+    doubly_link: DoublyLink<ObjectPage<SIZE>>,
 }
 
 impl<const SIZE: usize> ObjectPage<SIZE>
@@ -103,26 +105,6 @@ where
             self.count = self.count - 1;
             Ok(())
         }
-    }
-}
-
-impl<const SIZE: usize> DoublyLinkable for ObjectPage<SIZE>
-where
-    [(); SIZE - core::mem::size_of::<AllocationMap>() - 3 * core::mem::size_of::<usize>()]:,
-{
-    type T = Self;
-    fn set_prev(&mut self, pre: Link<Self>) {
-        self.prev_link = pre;
-    }
-    fn set_next(&mut self, next: Link<Self>) {
-        self.next_link = next;
-    }
-
-    fn prev(&self) -> Link<Self> {
-        self.prev_link
-    }
-    fn next(&self) -> Link<Self> {
-        self.next_link
     }
 }
 
