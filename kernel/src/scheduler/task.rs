@@ -7,42 +7,24 @@ use crate::{
 use test_macros::doubly_linkable;
 
 #[doubly_linkable]
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 #[repr(C)]
 pub struct Task {
     ctx: Context,
 }
 
 impl Task {
-    pub fn set_sp(&mut self, sp: u64) {
-        self.ctx.sp = sp;
+    pub fn set_sp(&mut self, sp: usize) {
+        self.ctx.sp = sp as u64;
     }
-    pub fn set_lr(&mut self, lr: u64) {
-        self.ctx.lr = lr;
+    pub fn set_lr(&mut self, lr: usize) {
+        self.ctx.lr = lr as u64;
     }
-    pub fn new(lr: u64) -> Self {
-        let mapped = MMU
-            .get()
-            .unwrap()
-            .kzalloc(1, RWNORMAL, HIGHER_PAGE)
-            .unwrap();
-        Self {
-            ctx: Context {
-                gpr: [0; 11],
-                sp: mapped.va.start().value() as u64,
-                lr,
-            },
-            ..Default::default()
-        }
+
+    pub fn get_sp(&self) -> usize {
+        self.ctx.sp as usize
     }
-    pub fn new_with_sp(sp: u64, lr: u64) -> Self {
-        Self {
-            ctx: Context {
-                gpr: [0; 11],
-                sp,
-                lr,
-            },
-            ..Default::default()
-        }
+    pub fn get_lr(&self) -> usize {
+        self.ctx.lr as usize
     }
 }

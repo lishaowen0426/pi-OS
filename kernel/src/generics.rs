@@ -96,6 +96,8 @@ impl<T> Link<T> {
         p
     }
 }
+
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct DoublyLink<T> {
     pub prev: Link<T>,
@@ -120,6 +122,7 @@ pub trait DoublyLinkable {
     fn next(&self) -> Link<Self::T>;
 }
 
+#[derive(Copy, Clone)]
 pub struct DoublyLinkedList<T> {
     head: Link<T>,
     tail: Link<T>,
@@ -161,6 +164,25 @@ where
         }
 
         self._len = self._len + 1;
+    }
+
+    pub fn pop_front(&mut self) -> Option<Link<T>> {
+        if self.len() == 0 {
+            None
+        } else {
+            let link = self.head;
+            self.remove(link);
+            Some(link)
+        }
+    }
+    pub fn pop_back(&mut self) -> Option<Link<T>> {
+        if self.len() == 0 {
+            None
+        } else {
+            let link = self.tail;
+            self.remove(link);
+            Some(link)
+        }
     }
 
     pub fn push_back(&mut self, link: Link<T>) {

@@ -205,6 +205,10 @@ impl MemoryManagementUnit {
         Ok(Mapped { va, pa })
     }
 
+    pub fn allocate_stack(&self, npage: usize) -> Result<Mapped, ErrorCode> {
+        self.kzalloc(npage, RWNORMAL, HIGHER_PAGE)
+    }
+
     pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {
         todo!()
     }

@@ -40,5 +40,6 @@ errno_decl!(
     EINIT  => "Not initialized properly",
     EPARAM => "Invalid parameter",
     ESUPPORTED => "Not supported",
+    ESCHED => "Scheduler error",
     EUNKNOWN => "Unknown reason",
 );

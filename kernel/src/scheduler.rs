@@ -1,26 +1,40 @@
 extern crate alloc;
 use crate::{
-    errno::ErrorCode,
+    errno::*,
     generics::{DoublyLinkedList, Link},
+    memory::*,
     println,
     synchronization::Spinlock,
 };
+use aarch64_cpu::{asm::barrier, registers::*};
 use alloc::boxed::Box;
+use core::arch::asm;
 use spin::{once::Once, Spin};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 mod context_switch;
 mod task;
+use crate::{bsp::device_driver::gic_400::IRQNum::SPI, memory::address::AddressRange};
 pub use context_switch::*;
 pub use task::*;
 
-pub struct UnSafeScheduler {
+const NUM_OF_CORES: usize = 4;
+const CORE_ID: usize = 0;
+
+#[derive(Copy, Clone)]
+struct RunQueue {
     tasks: DoublyLinkedList<Task>,
+    current: Option<*mut Task>,
 }
 
-impl UnSafeScheduler {
+unsafe impl Sync for RunQueue {}
+unsafe impl Send for RunQueue {}
+
+impl RunQueue {
     fn new() -> Self {
         Self {
             tasks: DoublyLinkedList::new(),
+            current: None,
         }
     }
 
@@ -28,8 +42,41 @@ impl UnSafeScheduler {
         self.tasks.push_front(Link::some(Box::into_raw(t) as usize));
     }
 
-    fn schedule(&self) -> *mut Task {
-        self.tasks.head().resolve_mut() as *mut Task
+    fn get_task(&mut self) -> Option<*mut Task> {
+        let t = self.tasks.pop_front()?;
+        Some(t.resolve_mut() as *mut Task)
+    }
+
+    fn replace_current(&mut self, t: *mut Task) {
+        if let Some(c) = self.current {
+            self.tasks.push_front(Link::some(c as usize));
+        }
+
+        self.current = Some(t)
+    }
+}
+
+pub struct UnSafeScheduler {
+    rq: [RunQueue; NUM_OF_CORES],
+}
+
+impl UnSafeScheduler {
+    fn new() -> Self {
+        Self {
+            rq: [RunQueue::new(); NUM_OF_CORES],
+        }
+    }
+
+    fn add_task(&mut self, t: Box<Task>) {
+        self.rq[CORE_ID].add_task(t);
+    }
+
+    fn schedule(&mut self) -> Option<*mut Task> {
+        let t = self.rq[CORE_ID].get_task()?;
+        Some(t as *mut Task)
+    }
+    fn replace_current(&mut self, t: *mut Task) {
+        self.rq[CORE_ID].replace_current(t)
     }
 }
 
@@ -48,8 +95,42 @@ impl Scheduler {
         self.sched.lock().add_task(t)
     }
 
-    pub fn schedule(&self) -> *mut Task {
+    pub fn schedule(&self) -> Option<*mut Task> {
         self.sched.lock().schedule()
+    }
+
+    pub fn init_task(&self) -> ! {
+        let mut t = Box::new(Task::default());
+        let stack = MMU.get().unwrap().allocate_stack(1).unwrap();
+        t.set_sp(stack.va.start().value());
+        println!("lr {:#018x}", sched_test as usize);
+        t.set_lr(sched_test as usize);
+        self.sched.lock().replace_current(Box::into_raw(t));
+
+        SPSR_EL1.write(
+            SPSR_EL1::M::EL0t
+                + SPSR_EL1::D::Masked
+                + SPSR_EL1::A::Masked
+                + SPSR_EL1::I::Masked
+                + SPSR_EL1::F::Masked,
+        );
+        SP_EL0.set(stack.va.start().value() as u64);
+        // ELR_EL1.set(sched_test as u64);
+        let elr: u64 = sched_test as u64;
+        unsafe {
+            asm!(
+                "msr ELR_EL1, {x}",
+                x = in(reg) elr,
+            );
+        }
+        println!("lr {:#018x}", ELR_EL1.get());
+
+        barrier::isb(barrier::SY);
+        unsafe {
+            asm!("eret");
+        }
+
+        loop {}
     }
 }
 
@@ -61,10 +142,7 @@ pub fn sched_test() -> ! {
 
 pub fn init() -> Result<(), ErrorCode> {
     SCHEDULER.call_once(|| Scheduler::new());
-    SCHEDULER
-        .get()
-        .unwrap()
-        .add_task(Box::new(Task::new(sched_test as u64)));
+
     Ok(())
 }
 

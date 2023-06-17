@@ -113,12 +113,11 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     println!("boot takes {} micros", boot_duration.as_micros());
 
     interrupt::init().unwrap();
-    cpu::timer::TIMER.get().unwrap().enable();
+    // cpu::timer::TIMER.get().unwrap().enable();
     scheduler::init();
+    scheduler::SCHEDULER.get().unwrap().init_task()
 
-    println!("Passed!");
-
-    loop {}
+    //    loop {}
 }
 
 #[cfg(test)]
