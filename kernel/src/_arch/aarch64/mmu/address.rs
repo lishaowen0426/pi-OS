@@ -185,6 +185,8 @@ pub trait AddressRange {
     fn align_to_4K(&mut self);
     fn align_to_2M(&mut self);
 
+    fn pop_bytes_front(&mut self, nbytes: usize) -> Option<Self::Address>;
+
     fn pop_4K_front(&mut self) -> Option<Self::Address>;
     fn pop_2M_front(&mut self) -> Option<Self::Address>;
 
@@ -286,6 +288,15 @@ macro_rules! impl_address_range {
                 self.end = self.end.align_to_2M_up();
             }
 
+            fn pop_bytes_front(&mut self, nbytes: usize) -> Option<Self::Address> {
+                if (self.end - self.start).value() < nbytes {
+                    None
+                } else {
+                    let popped = self.start;
+                    self.start = self.start + Self::Address::try_from(nbytes).unwrap();
+                    Some(popped)
+                }
+            }
             fn pop_4K_front(&mut self) -> Option<Self::Address> {
                 if self.end - self.start < Self::Address::_4K {
                     None
@@ -528,15 +539,9 @@ impl From<usize> for VirtualAddress {
         Self(value)
     }
 }
-
-impl TryFrom<usize> for PhysicalAddress {
-    type Error = ErrorCode;
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value > config::PHYSICAL_MEMORY_END_EXCLUSIVE {
-            Err(EOVERFLOW)
-        } else {
-            Ok(Self(value))
-        }
+impl From<usize> for PhysicalAddress {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
@@ -613,6 +618,101 @@ impl PhysicalAddress {
     pub fn to_2M_range(&self) -> PaRange {
         PaRange::new(*self, *self + PhysicalAddress::_2M)
     }
+    pub fn to_bytes_range(&self, nbytes: usize) -> PaRange {
+        PaRange::new(*self, *self + PhysicalAddress::from(nbytes))
+    }
+    fn _iter_to(start: Self, step: usize, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+
+        if !start.is_aligned_to(step) || !end_addr.is_aligned_to(step) {
+            None
+        } else {
+            Some(AddressIterator::new(
+                start,
+                PhysicalAddress::from(step),
+                end_addr,
+            ))
+        }
+    }
+
+    fn _iter_for(start: Self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
+        let end_addr = start + PhysicalAddress::from(step.checked_mul(n).unwrap());
+        if !start.is_aligned_to(step) || !end_addr.is_aligned_to(step) {
+            None
+        } else {
+            Some(AddressIterator::new(
+                start,
+                PhysicalAddress::from(step),
+                end_addr,
+            ))
+        }
+    }
+
+    // end is exclusive
+    pub fn iter_4K_to(&self, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(
+            self.align_to_4K_up(),
+            1 << config::SHIFT_4K,
+            end_addr.align_to_4K_down(),
+        )
+    }
+    pub fn iter_16K_to(&self, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(
+            self.align_to_16K_up(),
+            1 << config::SHIFT_16K,
+            end_addr.align_to_16K_down(),
+        )
+    }
+    pub fn iter_64K_to(&self, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(
+            self.align_to_64K_up(),
+            1 << config::SHIFT_64K,
+            end_addr.align_to_64K_down(),
+        )
+    }
+    pub fn iter_2M_to(&self, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(
+            self.align_to_2M_up(),
+            1 << config::SHIFT_2M,
+            end_addr.align_to_2M_down(),
+        )
+    }
+    pub fn iter_1G_to(&self, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(
+            self.align_to_1G_up(),
+            1 << config::SHIFT_1G,
+            end_addr.align_to_1G_down(),
+        )
+    }
+
+    pub fn iter_to(&self, step: usize, end: impl Physical) -> Option<AddressIterator<Self>> {
+        let end_addr = end.to_address();
+        Self::_iter_to(self.align_up(step), step, end_addr.align_down(step))
+    }
+
+    pub fn iter_4K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(self.align_to_4K_up(), 1 << config::SHIFT_4K, n)
+    }
+    pub fn iter_16K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(self.align_to_16K_up(), 1 << config::SHIFT_16K, n)
+    }
+    pub fn iter_64K_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(self.align_to_64K_up(), 1 << config::SHIFT_64K, n)
+    }
+    pub fn iter_2M_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(self.align_to_2M_up(), 1 << config::SHIFT_2M, n)
+    }
+    pub fn iter_1G_for(&self, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(self.align_to_1G_up(), 1 << config::SHIFT_1G, n)
+    }
+    pub fn iter_for(&self, step: usize, n: usize) -> Option<AddressIterator<Self>> {
+        Self::_iter_for(self.align_up(step), step, n)
+    }
 }
 
 #[allow(non_snake_case)]
@@ -632,6 +732,9 @@ impl VirtualAddress {
     }
     pub fn to_2M_range(&self) -> VaRange {
         VaRange::new(*self, *self + VirtualAddress::_2M)
+    }
+    pub fn to_bytes_range(&self, nbytes: usize) -> VaRange {
+        VaRange::new(*self, *self + VirtualAddress::from(nbytes))
     }
 
     pub fn set_level1<T>(&mut self, idx: T) -> &mut Self
@@ -871,6 +974,15 @@ mod tests {
             assert_eq!(va_range1, VaRange::new(start, end + 10 * 0x1000));
             va_range2.merge(&va_range3).unwrap();
             assert_eq!(va_range2, VaRange::new(start, end + 10 * 0x1000));
+        }
+        {
+            let start: usize = 0x8000;
+            let end: usize = start + 10 * 0x200000;
+            let mut va_range1 = VaRange::new(start, end);
+            let mut va_range2 = VaRange::new(end, end + 10 * 0x1000);
+            let mut va_range3 = VaRange::new(start, end);
+            let popped = va_range1.pop_bytes_front(4000).unwrap();
+            assert_eq!(va_range1, VaRange::new(start + 4000, end));
         }
     }
 }

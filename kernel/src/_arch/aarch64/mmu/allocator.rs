@@ -79,6 +79,28 @@ impl UnsafeFrameAllocator {
     fn init(&mut self, pa_range: PaRange) {
         self.pma.insert(Box::new(AddressRangeNode::new(pa_range)));
     }
+    pub fn allocate_n(&mut self, npage: usize) -> Result<PaRange, ErrorCode> {
+        let nbytes = npage * LEN_4K;
+
+        for n in self.pma.iter() {
+            if n.range().size_in_bytes() >= nbytes {
+                let mut range = n.range_copy();
+                let end = range.end();
+                let bound = Bound::Included(&end);
+                let mut cursor = self.pma.upper_bound_mut(bound);
+                if *(cursor.get().unwrap().range()) != range {
+                    return Err(EFRAME);
+                }
+                let pa = range.pop_bytes_front(nbytes).unwrap();
+                cursor
+                    .replace_with(Box::new(AddressRangeNode::new(range)))
+                    .unwrap();
+                return Ok(pa.to_bytes_range(nbytes));
+            }
+        }
+
+        Err(EFRAME)
+    }
     pub fn allocate_4K(&mut self) -> Result<PaRange, ErrorCode> {
         for n in self.pma.iter() {
             if n.range().len().value() >= LEN_4K {
@@ -173,6 +195,9 @@ impl FrameAllocator {
             _ => Err(ESUPPORTED),
         }
     }
+    pub fn allocate_n(&self, npage: usize) -> Result<PaRange, ErrorCode> {
+        self.allocator.lock().allocate_n(npage)
+    }
 
     pub fn free_range(&self, pa_range: PaRange) {
         self.allocator.lock().free_range(pa_range)
@@ -204,6 +229,30 @@ impl UnsafePageAllocator {
             .insert(Box::new(AddressRangeNode::new(boot_info.lower_free_page)));
         self.higher_vma
             .insert(Box::new(AddressRangeNode::new(boot_info.higher_free_page)));
+    }
+    fn _allocate_n(
+        npage: usize,
+        vma: &mut RBTree<AddressRangeAdaptor<VaRange>>,
+    ) -> Result<VaRange, ErrorCode> {
+        let nbytes = npage * LEN_4K;
+        for n in vma.iter() {
+            if n.range().size_in_bytes() >= nbytes {
+                let mut range = n.range_copy();
+                let end = range.end();
+                let bound = Bound::Included(&end);
+                let mut cursor = vma.upper_bound_mut(bound);
+                if *(cursor.get().unwrap().range()) != range {
+                    return Err(EPAGE);
+                }
+                let va = range.pop_bytes_front(nbytes).unwrap();
+                cursor
+                    .replace_with(Box::new(AddressRangeNode::new(range)))
+                    .unwrap();
+                return Ok(va.to_bytes_range(nbytes));
+            }
+        }
+
+        Err(EPAGE)
     }
     fn _allocate_4K(vma: &mut RBTree<AddressRangeAdaptor<VaRange>>) -> Result<VaRange, ErrorCode> {
         for n in vma.iter() {
@@ -283,6 +332,12 @@ impl UnsafePageAllocator {
             MemoryRegion::Higher => Self::_allocate_2M(&mut self.higher_vma),
         }
     }
+    fn allocate_n(&mut self, npage: usize, region: &MemoryRegion) -> Result<VaRange, ErrorCode> {
+        match *region {
+            MemoryRegion::Lower => Self::_allocate_n(npage, &mut self.lower_vma),
+            MemoryRegion::Higher => Self::_allocate_n(npage, &mut self.higher_vma),
+        }
+    }
     pub fn free_range(&mut self, va_range: VaRange) {
         if va_range.start() >= self.higher_vma_start {
             Self::_free_range(&mut self.higher_vma, va_range)
@@ -316,6 +371,9 @@ impl PageAllocator {
             BlockSize::_2M => self.allocate_2M(region),
             _ => Err(ESUPPORTED),
         }
+    }
+    pub fn allocate_n(&self, npage: usize, region: &MemoryRegion) -> Result<VaRange, ErrorCode> {
+        self.allocator.lock().allocate_n(npage, region)
     }
     pub fn free_range(&self, va_range: VaRange) {
         self.allocator.lock().free_range(va_range)

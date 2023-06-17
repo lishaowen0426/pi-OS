@@ -24,7 +24,7 @@ impl Task {
         let mapped = MMU
             .get()
             .unwrap()
-            .kzalloc(BLOCK_4K, RWNORMAL, HIGHER_PAGE)
+            .kzalloc(1, RWNORMAL, HIGHER_PAGE)
             .unwrap();
         Self {
             ctx: Context {

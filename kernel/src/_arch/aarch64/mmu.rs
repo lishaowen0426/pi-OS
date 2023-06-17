@@ -179,32 +179,30 @@ impl MemoryManagementUnit {
     // kzalloc will zero the allocated memory
     pub fn kzalloc(
         &self,
-        sz: &BlockSize,
+        npage: usize,
         mt: &MemoryType,
         region: &MemoryRegion,
     ) -> Result<Mapped, ErrorCode> {
         let va = allocator::PAGE_ALLOCATOR
             .get()
             .unwrap()
-            .allocate(sz, region)?;
-        let pa = allocator::FRAME_ALLOCATOR.get().unwrap().allocate(sz)?;
-        self.map(va.start(), pa.start(), mt, sz)?;
+            .allocate_n(npage, region)?;
+        let pa = allocator::FRAME_ALLOCATOR
+            .get()
+            .unwrap()
+            .allocate_n(npage)?;
+        va.start()
+            .iter_4K_for(npage)
+            .unwrap()
+            .zip(pa.start().iter_4K_for(npage).unwrap())
+            .for_each(|(va, pa)| {
+                self.map(va, pa, mt, BLOCK_4K).unwrap();
+            });
 
-        match *sz {
-            BlockSize::_4K => {
-                unsafe {
-                    clear_memory_range(va.start().value(), va.end().value());
-                }
-                Ok(Mapped { va, pa })
-            }
-            BlockSize::_2M => {
-                unsafe {
-                    clear_memory_range(va.start().value(), va.end().value());
-                }
-                Ok(Mapped { va, pa })
-            }
-            _ => Err(ESUPPORTED),
+        unsafe {
+            clear_memory_range(va.start().value(), va.end().value());
         }
+        Ok(Mapped { va, pa })
     }
 
     pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {

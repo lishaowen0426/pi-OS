@@ -235,7 +235,7 @@ impl HeapBackend {
         let mapped = super::MMU
             .get()
             .unwrap()
-            .kzalloc(BLOCK_4K, RWNORMAL, HIGHER_PAGE)?;
+            .kzalloc(1, RWNORMAL, HIGHER_PAGE)?;
 
         self.insert(mapped.va)
     }
