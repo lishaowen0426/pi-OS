@@ -371,7 +371,7 @@ impl Descriptor {
     const fn RW_normal() -> u64 {
         (0b1 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
-            | (0b00 << Self::AP.start) //Read Write
+            | (0b01 << Self::AP.start) //Read Write
             | (0b11 << Self::SH.start) //Inner Shareable
             | (0b1 << Self::AF) //Accessed
             | (0b0 << Self::nG) //Always global
@@ -400,13 +400,13 @@ impl Descriptor {
     const fn RWX_normal() -> u64 {
         (0b1 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
-            | (0b00 << Self::AP.start) //Read Write
+            | (0b01 << Self::AP.start) //Read Write
             | (0b11 << Self::SH.start) //Inner Shareable
             | (0b1 << Self::AF) //Accessed
             | (0b0 << Self::nG) //Always global
             | (0b0 << Self::Contiguous) //Non contiguous
             | (0b0 << Self::PXN) // Executable at EL1
-            | (0b0 << Self::UXN) // Never Executable at EL0
+            | (0b0 << Self::UXN) // Executable at EL0
     }
 
     pub fn set_RWX_normal(&mut self) -> Result<(), ErrorCode> {
@@ -429,7 +429,7 @@ impl Descriptor {
     const fn RO_normal() -> u64 {
         (0b1 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
-            | (0b10 << Self::AP.start) //Read Only
+            | (0b11 << Self::AP.start) //Read Only
             | (0b11 << Self::SH.start) //Inner Shareable
             | (0b1 << Self::AF) //Accessed
             | (0b0 << Self::nG) //Always global
@@ -457,13 +457,13 @@ impl Descriptor {
     const fn X_normal() -> u64 {
         (0b1 << Self::AttrIndx.start) // Normal Memory
             | (0b0 << Self::NS) // Alway secure
-            | (0b10 << Self::AP.start) //Read Only
+            | (0b11 << Self::AP.start) //Read Only
             | (0b11 << Self::SH.start) //Inner Shareable
             | (0b1 << Self::AF) //Accessed
             | (0b0 << Self::nG) //Always global
             | (0b0 << Self::Contiguous) //Non contiguous
             | (0b0 << Self::PXN) // Executable at EL1
-            | (0b1 << Self::UXN) // Never Execute at EL0
+            | (0b0 << Self::UXN) // Executable at EL0
     }
 
     pub fn set_X_normal(&mut self) -> Result<(), ErrorCode> {
@@ -486,7 +486,7 @@ impl Descriptor {
     const fn RW_device() -> u64 {
         (0b0 << Self::AttrIndx.start) // Device Memory
             | (0b0 << Self::NS) // Alway secure
-            | (0b00 << Self::AP.start) //Read Write
+            | (0b01 << Self::AP.start) //Read Write
             | (0b1 << Self::AF) //Accessed
             | (0b0 << Self::nG) //Always global
             | (0b0 << Self::Contiguous) //Non contiguous
@@ -515,7 +515,7 @@ impl Descriptor {
     const fn RO_device() -> u64 {
         (0b0 << Self::AttrIndx.start) // Device Memory
             | (0b0 << Self::NS) // Alway secure
-            | (0b10 << Self::AP.start) //Read Only
+            | (0b11 << Self::AP.start) //Read Only
             | (0b1 << Self::AF) //Accessed
             | (0b0 << Self::nG) //Always global
             | (0b0 << Self::Contiguous) //Non contiguous
@@ -544,13 +544,12 @@ impl Descriptor {
 
     // Table attributes are fixed
     //
-    // APTable = 01: Accesses from EL0 are never permitted in subsequent tables
     // UXN = PXN = 0: Does not effect the executability of subsequent tables
     // NS = 0: secure
     const fn Table_attr() -> u64 {
         (0b0 << Self::NSTable) // if NSTable = 1, subsequent entries are treated as non-global,
         // regardless of its nG bit.
-            | (0b01 << Self::APTable.start)
+            | (0b00 << Self::APTable.start)
             | (0b0 << Self::UXNTable)
             | (0b0 << Self::PXNTable)
             | (0b1 << Self::AF) // Accessed
@@ -567,7 +566,7 @@ impl Descriptor {
     const fn Table_Page_attr() -> u64 {
         (0b0 << Self::NSTable) // if NSTable = 1, subsequent entries are treated as non-global,
         // regardless of its nG bit.
-            | (0b01 << Self::APTable.start)
+            | (0b00 << Self::APTable.start)
             | (0b0 << Self::UXNTable)
             | (0b0 << Self::PXNTable)
             | (0b1 << Self::AF) // Accessed

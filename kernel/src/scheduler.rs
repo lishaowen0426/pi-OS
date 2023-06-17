@@ -103,27 +103,18 @@ impl Scheduler {
         let mut t = Box::new(Task::default());
         let stack = MMU.get().unwrap().allocate_stack(1).unwrap();
         t.set_sp(stack.va.start().value());
-        println!("lr {:#018x}", sched_test as usize);
         t.set_lr(sched_test as usize);
         self.sched.lock().replace_current(Box::into_raw(t));
 
         SPSR_EL1.write(
             SPSR_EL1::M::EL0t
-                + SPSR_EL1::D::Masked
-                + SPSR_EL1::A::Masked
-                + SPSR_EL1::I::Masked
-                + SPSR_EL1::F::Masked,
+                + SPSR_EL1::D::Unmasked
+                + SPSR_EL1::A::Unmasked
+                + SPSR_EL1::I::Unmasked
+                + SPSR_EL1::F::Unmasked,
         );
         SP_EL0.set(stack.va.start().value() as u64);
-        // ELR_EL1.set(sched_test as u64);
-        let elr: u64 = sched_test as u64;
-        unsafe {
-            asm!(
-                "msr ELR_EL1, {x}",
-                x = in(reg) elr,
-            );
-        }
-        println!("lr {:#018x}", ELR_EL1.get());
+        ELR_EL1.set(sched_test as u64);
 
         barrier::isb(barrier::SY);
         unsafe {
