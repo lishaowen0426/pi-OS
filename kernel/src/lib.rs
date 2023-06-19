@@ -96,6 +96,7 @@ impl fmt::Debug for BootInfo {
 #[cfg(not(test))]
 #[no_mangle]
 pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
+    bsp::device_driver::gpio::init().unwrap();
     console::init().unwrap();
     exception::init().unwrap();
     println!("Boot info:");

@@ -1,6 +1,5 @@
 use crate::{
-    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver,
-    synchronization::Spinlock,
+    bsp::device_driver::mmio_wrapper::MMIODerefWrapper, driver, synchronization::Spinlock,
 };
 
 use tock_registers::{
@@ -29,31 +28,7 @@ register_bitfields! {
 
     ],
 
-    GPPUD [
-        /// Controls the actuation of the internal pull-up/down control line to ALL the GPIO pins.
-        PUD OFFSET(0) NUMBITS(2) [
-            Off = 0b00,
-            PullDown = 0b01,
-            PullUp = 0b10
-        ]
-    ],
 
-    /// GPIO Pull-up/down Clock Register 0
-    ///
-    /// BCM2837 only.
-    GPPUDCLK0 [
-        /// Pin 15
-        PUDCLK15 OFFSET(15) NUMBITS(1) [
-            NoEffect = 0,
-            AssertClock = 1
-        ],
-
-        /// Pin 14
-        PUDCLK14 OFFSET(14) NUMBITS(1) [
-            NoEffect = 0,
-            AssertClock = 1
-        ]
-    ],
 
     GPIO_PUP_PDN_CNTRL_REG0 [
         GPIO_PUP_PDN_CNTRL15 OFFSET(30) NUMBITS(2)[
@@ -78,9 +53,6 @@ register_structs! {
         (0x00 => _reserved1),
         (0x04 => GPFSEL1: ReadWrite<u32, GPFSEL1::Register>),
         (0x08 => _reserved2),
-        (0x94 => GPPUD: ReadWrite<u32, GPPUD::Register>),
-        (0x98 => GPPUDCLK0: ReadWrite<u32, GPPUDCLK0::Register>),
-        (0x9C => _reserved3),
         (0xE4 => GPIO_PUP_PDN_CNTRL_REG0: ReadWrite<u32, GPIO_PUP_PDN_CNTRL_REG0::Register>),
         (0xE8 => @END),
 

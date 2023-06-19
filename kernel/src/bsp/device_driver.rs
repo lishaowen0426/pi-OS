@@ -1,4 +1,4 @@
-mod gpio;
+pub mod gpio;
 mod mini_uart;
 mod utils;
 
@@ -12,5 +12,4 @@ pub mod gic_400;
 #[cfg(feature = "bsp_rpi4")]
 pub use gic_400 as interrupt_controller;
 
-pub use gpio::*;
 pub use mini_uart::*;
