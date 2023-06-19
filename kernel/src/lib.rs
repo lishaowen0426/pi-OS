@@ -116,8 +116,6 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     cpu::timer::TIMER.get().unwrap().enable();
     scheduler::init();
     scheduler::SCHEDULER.get().unwrap().init_task()
-
-    //    loop {}
 }
 
 #[cfg(test)]

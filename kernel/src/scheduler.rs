@@ -126,8 +126,14 @@ impl Scheduler {
 }
 
 pub fn sched_test() -> ! {
+    println!("Hello Scheduler");
+    let a = 5u32;
+    let b = 6u32;
+    let mut c = 0u32;
     loop {
-        println!("Hello Scheduler");
+        unsafe {
+            core::ptr::write_volatile(&mut c as *mut u32, a + b);
+        }
     }
 }
 

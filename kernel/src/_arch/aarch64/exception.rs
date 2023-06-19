@@ -259,7 +259,7 @@ extern "C" fn lower_aarch64_synchronous(e: &mut ExceptionContext) {
 
 #[no_mangle]
 extern "C" fn lower_aarch64_irq(e: &mut ExceptionContext) {
-    default_irq_exception_handler(e);
+    IRQ_CONTROLLER.get().unwrap().handle().unwrap();
 }
 
 #[no_mangle]
