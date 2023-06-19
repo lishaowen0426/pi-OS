@@ -3,6 +3,7 @@ use crate::{
     console,
     cpu::nop,
 };
+use tock_registers::{register_bitfields, register_structs};
 
 use core::cell::SyncUnsafeCell;
 
@@ -20,6 +21,62 @@ const AUX_MU_BAUD_REG: usize = MINI_UART_START + 0x68;
 
 const CLOCK: u64 = 500000000;
 const BAUD_RATE: u32 = 115200;
+
+register_bitfields!(u32,
+    AUX_MU_IO_REG[
+        DATA OFFSET(0) NUMBITS(8) [],
+    ],
+    AUX_MU_IER_REG[
+        TRANSMIT_INTERRUPT OFFSET(0) NUMBIST(1)[],
+        RECEIVE_INTERRUPT OFFSET(1) NUMBIST(1)[],
+    ],
+    AUX_MU_IIR_REG[
+        INTERRUPT_PENDING OFFSET(0) NUMBITS(1) [],
+        INTERRUPT_ID OFFSET(1) NUMBITS(2) [],
+    ],
+    AUX_MU_LCR_REG[
+        DATA_SIZE OFFSET(0) NUMBITS(1) [],
+        BREAK OFFSET(6) NUMBITS(1) [],
+        DLAB OFFSET(7) NUMBITS(1) [],
+    ],
+    AUX_MU_MCR_REG[
+        RTS OFFSET(1) NUMBITS(1)[],
+    ],
+    AUX_MU_LSR_REG[
+        DATA_READY OFFSET(0) NUMBITS(1)[],
+        TRANSMIT_EMPTY OFFSET(5) NUMBITS(1) [],
+        TRANSMIT_IDLE OFFSET(6) NUMBITS(1) [],
+    ],
+    AUX_MU_MSR_REG[
+        CTS OFFSET(4) NUMBITS(1)[],
+    ],
+    AUX_MU_CNTL_REG[
+        RECEIVER_ENABLE OFFSET(0) NUMBITS(1)[],
+        TRANSMITTER_ENABLE OFFSET(1) NUMBITS(1)[],
+        RECEIVER_FLOW_CONTROL OFFSET(2) NUMBITS(1)[],
+        TRANSMITTER_FLOW_CONTROL OFFSET(3) NUMBITS(1)[],
+        RTS_LEVEL OFFSET(4) NUMBITS(2) [],
+        RTS_ASSERT_LEVEL OFFSET(6) NUMBITS(1) [],
+        CTS_ASSERT_LEVEL OFFSET(7) NUMBITS(1) [],
+    ],
+    AUX_MU_STAT_REG[
+        SYMBOL_AVAILABLE OFFSET(0) NUMBITS(1)[],
+        SPACE_AVAILABLE OFFSET(1) NUMBITS(1)[],
+        RECEIVER_IDLE OFFSET(2) NUMBITS(1)[],
+        TRANSMITTER_IDLE OFFSET(3) NUMBITS(1)[],
+        RECEIVER_OVERRUN OFFSET(4) NUMBITS(1)[],
+        TRANSMIT_FIFO_FULL OFFSET(5) NUMBITS(1) [],
+        RTS OFFSET(6) NUMBITS(1) [],
+        CTS OFFSET(7) NUMBITS(1) [],
+        TRANSMIT_FIFO_EMPTY OFFSET(8) NUMBITS(1) [],
+        TRANSMITTER_DONE OFFSET(9) NUMBITS(1) [],
+        RECEIVE_FIFO_FILL_LEVEL OFFSET(16) NUMBITS(4) [],
+        TRANSMIT_FIFO_FILL_LEVEL OFFSET(24) NUMBITS(4) [],
+    ],
+    AUX_MU_BAUD_REG[
+        BAUDRATE OFFSET(0) NUMBITS(16) [],
+    ],
+);
 
 pub enum BlockingMode {
     Blocking,
