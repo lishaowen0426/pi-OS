@@ -159,3 +159,11 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
 
     cpu::qemu_exit_success()
 }
+#[cfg(not(test))]
+#[no_mangle]
+pub unsafe fn chainloader_main() -> ! {
+    bsp::device_driver::gpio::init().unwrap();
+    bsp::device_driver::mini_uart::init().unwrap();
+    println!("Welcome to chainloader!");
+    loop {}
+}

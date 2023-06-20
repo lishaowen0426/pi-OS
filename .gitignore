@@ -1,6 +1,7 @@
 **/target/*
 **/.gdb_history
 **/kernel8.img
+*.img
 .idea/
 test_cases/
 

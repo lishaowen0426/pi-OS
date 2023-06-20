@@ -101,7 +101,6 @@ _start:
     adr_load    x1, __page_table_end_exclusive
     bl          clear_memory_range
 
-    bl init_mini_uart
 
     bl .L_system_counter
     bl .L_map_lower_half

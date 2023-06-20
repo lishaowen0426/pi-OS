@@ -12,6 +12,7 @@ default = []
 bsp_rpi3 = ["tock-registers"]
 bsp_rpi4 = ["tock-registers"]
 test_build = [ "build_qemu"]
+build_chainloader = ["tock-registers"]
 build_qemu = ["bsp_rpi3", "qemu-exit"]
 
 [[bin]]

@@ -17,7 +17,7 @@ pub fn board_name() -> &'static str {
     {
         "Raspberry Pi 3"
     }
-    #[cfg(feature = "bsp_rpi4")]
+    #[cfg(any(feature = "bsp_rpi4", feature = "build_chainloader"))]
     {
         "Raspberry Pi 4"
     }

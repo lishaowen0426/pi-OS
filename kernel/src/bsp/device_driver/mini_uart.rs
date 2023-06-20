@@ -13,7 +13,8 @@ use tock_registers::{
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
 const MINI_UART_OFFSET: usize = 0x0021_5000;
-const VIRTUAL_MINI_UART_START: usize = config::VIRTUAL_PERIPHERAL_START + mmio::MINI_UART_OFFSET;
+pub const VIRTUAL_MINI_UART_START: usize =
+    config::VIRTUAL_PERIPHERAL_START + mmio::MINI_UART_OFFSET;
 
 register_bitfields!(u32,
     AUX_IRQ[
@@ -106,25 +107,6 @@ fn mu_baud_reg(clock: u64, baud: u32) -> u32 {
     ((clock / (baud * 8) as u64) - 1) as u32
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn init_mini_uart() {
-    // mmio_write(AUX_ENABLES - VIRTUAL_PHYSICAL_DIFF, 1); // enable UART1
-    // mmio_write(AUX_MU_IER_REG - VIRTUAL_PHYSICAL_DIFF, 0);
-    // mmio_write(AUX_MU_CNTL_REG - VIRTUAL_PHYSICAL_DIFF, 0);
-    // mmio_write(AUX_MU_LCR_REG - VIRTUAL_PHYSICAL_DIFF, 3); // 8 bits
-    // mmio_write(AUX_MU_MCR_REG - VIRTUAL_PHYSICAL_DIFF, 0);
-    // mmio_write(AUX_MU_IER_REG - VIRTUAL_PHYSICAL_DIFF, 0);
-    // mmio_write(AUX_MU_IIR_REG - VIRTUAL_PHYSICAL_DIFF, 0xC6); // disable interrupts
-    // mmio_write(
-    //     AUX_MU_BAUD_REG - VIRTUAL_PHYSICAL_DIFF,
-    //     mu_baud_reg(CLOCK, BAUD_RATE),
-    // );
-    // mmio_write(AUX_MU_CNTL_REG - VIRTUAL_PHYSICAL_DIFF, 3); // enable RX/TX
-    //                                                         //
-    //                                                         // self.clear_rx();
-    // return;
-}
-
 const CLOCK: u64 = 500000000;
 const BAUD_RATE: u32 = 115200;
 
@@ -133,10 +115,8 @@ pub enum BlockingMode {
     NonBlocking,
 }
 
-struct UnSafeMiniUart {
+pub struct UnSafeMiniUart {
     reg: MMIOWrapper<RegisterBlock>,
-    chars_read: usize,
-    chars_written: usize,
 }
 
 pub struct MiniUart {
@@ -144,11 +124,9 @@ pub struct MiniUart {
 }
 
 impl UnSafeMiniUart {
-    fn new(mmio_start_addr: usize) -> Self {
+    pub fn new(mmio_start_addr: usize) -> Self {
         Self {
             reg: MMIOWrapper::new(mmio_start_addr),
-            chars_read: 0,
-            chars_written: 0,
         }
     }
 
@@ -258,8 +236,16 @@ impl fmt::Write for UnSafeMiniUart {
 }
 
 pub fn init() -> Result<(), ErrorCode> {
-    MINI_UART.call_once(|| MiniUart::new(VIRTUAL_MINI_UART_START));
-    MINI_UART.get().unwrap().init();
+    #[cfg(not(feature = "build_chainloader"))]
+    {
+        MINI_UART.call_once(|| MiniUart::new(VIRTUAL_MINI_UART_START));
+        MINI_UART.get().unwrap().init();
+    }
+    #[cfg(feature = "build_chainloader")]
+    {
+        let mut muart = UnSafeMiniUart::new(VIRTUAL_MINI_UART_START);
+        muart.init();
+    }
     Ok(())
 }
 

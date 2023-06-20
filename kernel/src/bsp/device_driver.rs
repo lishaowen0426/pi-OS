@@ -7,7 +7,7 @@ pub mod bcm_ic;
 #[cfg(feature = "bsp_rpi3")]
 pub use bcm_ic as interrupt_controller;
 
-#[cfg(feature = "bsp_rpi4")]
+#[cfg(any(feature = "bsp_rpi4", feature = "build_chainloader"))]
 pub mod gic_400;
-#[cfg(feature = "bsp_rpi4")]
+#[cfg(any(feature = "bsp_rpi4", feature = "build_chainloader"))]
 pub use gic_400 as interrupt_controller;

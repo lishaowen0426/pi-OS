@@ -14,7 +14,9 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 mod context_switch;
 mod task;
-use crate::{bsp::device_driver::gic_400::IRQNum::SPI, memory::address::AddressRange};
+#[cfg(not(feature = "build_qemu"))]
+use crate::bsp::device_driver::gic_400::IRQNum::SPI;
+use crate::memory::address::AddressRange;
 pub use context_switch::*;
 pub use task::*;
 

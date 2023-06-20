@@ -109,7 +109,15 @@ impl GPIOController {
 
 pub static GPIO: Once<GPIOController> = Once::new();
 pub fn init() -> Result<(), ErrorCode> {
-    GPIO.call_once(|| GPIOController::new(GPIO_VIRTUAL_START));
-    GPIO.get().unwrap().init();
+    #[cfg(not(feature = "build_chainloader"))]
+    {
+        GPIO.call_once(|| GPIOController::new(GPIO_VIRTUAL_START));
+        GPIO.get().unwrap().init();
+    }
+    #[cfg(feature = "build_chainloader")]
+    {
+        let gpio = UnsafeGPIO::new(GPIO_VIRTUAL_START);
+        gpio.init();
+    }
     Ok(())
 }

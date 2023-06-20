@@ -73,7 +73,7 @@ const fn get_level2_index(va: usize) -> usize {
     (va >> L2_INDEX_SHIFT) & INDEX_MASK
 }
 
-#[cfg(feature = "bsp_rpi3")]
+#[cfg(any(feature = "build_qemu", feature = "build_chainloader"))]
 pub const VIRTUAL_PERIPHERAL_START: usize = PHYSICAL_PERIPHERAL_START;
 #[cfg(feature = "bsp_rpi4")]
 pub const VIRTUAL_PERIPHERAL_START: usize = KERNEL_BASE

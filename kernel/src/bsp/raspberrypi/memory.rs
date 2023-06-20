@@ -37,7 +37,7 @@ pub mod mmio {
     pub const IC_OFFSET: usize = 0x3F00B200 - PHYSICAL_PERIPHERAL_START;
 }
 
-#[cfg(feature = "bsp_rpi4")]
+#[cfg(any(feature = "bsp_rpi4", feature = "build_chainloader"))]
 pub mod mmio {
     use super::*;
 

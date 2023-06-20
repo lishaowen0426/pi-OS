@@ -34,6 +34,7 @@ QEMU_MISSING_STRING = "This board is not yet supported for QEMU."
 TARGET            = aarch64-unknown-none-softfloat
 KERNEL_BIN        = kernel8.img
 QEMU_KERNEL_BIN        = qemu-kernel8.img
+CHAINLOADER_KERNEL_BIN        = chainloader-kernel8.img
 QEMU_BINARY       = qemu-system-aarch64
 QEMU_MACHINE_TYPE = raspi3b
 QEMU_RELEASE_ARGS = -serial stdio -display none  -machine $(QEMU_MACHINE_TYPE)
@@ -48,6 +49,9 @@ ASM_SEARCH_PATH   = ./kernel/src/_arch/aarch64/cpu
 KERNEL_LINKER_SCRIPT = kernel.ld
 LD_SCRIPT_PATH    = ./kernel/src/bsp/raspberrypi/$(KERNEL_LINKER_SCRIPT)
 LD_SCRIPT_FOLDER    = $(shell pwd)/kernel/src/bsp/raspberrypi/
+
+CHAINLOADER_KERNEL_LINKER_SCRIPT = chainloader_kernel.ld
+CHAINLOADER_LD_SCRIPT_PATH    = ./kernel/src/bsp/raspberrypi/$(CHAINLOADER_KERNEL_LINKER_SCRIPT)
 
 ifeq ($(BSP),rpi3)
 	AS_ARGS           = -mcpu=cortex-a53 -I $(ASM_SEARCH_PATH)
@@ -70,6 +74,9 @@ ASSEMBLED_BOOT = ./target/$(TARGET)/boot.o
 TEST_BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/test-boot.s
 TEST_ASSEMBLED_BOOT = ./target/$(TARGET)/test-boot.o
 
+CHAINLOADER_BOOT_ASM = ./kernel/src/_arch/aarch64/cpu/chainloader_boot.s
+CHAINLOADER_ASSEMBLED_BOOT = ./target/$(TARGET)/chainloader_boot.o
+
 KERNEL_LIB = ./target/$(TARGET)/$(PROFILE)/liblibkernel.a
 KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
 
@@ -85,6 +92,7 @@ LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
 KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/kernel
 QEMU_KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/qemu-kernel
+CHAINLOADER_KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/chainloader-kernel
 # This parses cargo's dep-info file.
 # https://doc.rust-lang.org/cargo/guide/build-cache.html#dep-info-files
 KERNEL_ELF_DEPS = $(filter-out %: ,$(file < $(KERNEL_ELF).d)) $(KERNEL_MANIFEST) $(LAST_BUILD_CONFIG)
@@ -168,7 +176,7 @@ endif
 ##--------------------------------------------------------------------------------------------------
 ## Targets
 ##--------------------------------------------------------------------------------------------------
-.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) $(ASSEMBLED_BOOT) $(TEST_ASSEMBLED_BOOT)
+.PHONY: all doc clippy clean readelf objdump nm check miniterm chainboot test_unit $(KERNEL_BIN) $(KERNEL_ELF) $(KERNEL_LIB) $(ASSEMBLED_BOOT) $(TEST_ASSEMBLED_BOOT) $(CHAINLOADER_ASSEMBLED_BOOT) $(CHAINLOADER_KERNEL_ELF) $(CHAINLOADER_KERNEL_BIN)
 
 
 all: $(KERNEL_BIN)
@@ -209,16 +217,18 @@ qemuwait: QEMU_RELEASE_ARGS += -s -S
 qemuwait: do_qemu
 
 qemu: do_qemu
+qemuasm: do_qemuasm
 
 do_qemu: FEATURES := --features build_qemu
+do_qemuasm: FEATURES := --features build_qemu
 
-do_qemu: $(QEMU_KERNEL_BIN)
-	$(call color_header, "Launching QEMU")
-	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(QEMU_KERNEL_BIN)
+do_qemu: $(CHAINLOADER_KERNEL_BIN)
+	$(call color_header, "Launching QEMU - $(CHAINLOADER_KERNEL_BIN)")
+	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(CHAINLOADER_KERNEL_BIN)
 
-qemuasm: $(KERNEL_BIN)
+do_qemuasm: $(CHAINLOADER_KERNEL_BIN)
 	$(call color_header, "Launching QEMU with ASM output")
-	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN) -d in_asm
+	@$(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(CHAINLOADER_KERNEL_BIN) -d in_asm
 endif
 
 ##------------------------------------------------------------------------------
@@ -240,16 +250,16 @@ readelf: $(KERNEL_ELF)
 	$(call color_header, "Launching readelf")
 	@$(DOCKER_TOOLS) $(READELF_BINARY) --headers $(KERNEL_ELF)
 
-readelf_asm: $(ASSEMBLED_BOOT)
-	$(call color_header, "Launching readelf for asm")
-	@$(DOCKER_TOOLS) $(READELF_BINARY) -a $(ASSEMBLED_BOOT)
+readelf_asm: $(CHAINLOADER_ASSEMBLED_BOOT)
+	$(call color_header, "Launching readelf for $(CHAINLOADER_ASSEMBLED_BOOT)")
+	@$(DOCKER_TOOLS) $(READELF_BINARY) --help
 
 ##------------------------------------------------------------------------------
 ## Run objdump
 ##------------------------------------------------------------------------------
-objdump: $(KERNEL_ELF)
-	$(call color_header, "Launching objdump")
-	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY)  -d   $(KERNEL_ELF)
+objdump: $(CHAINLOADER_ASSEMBLED_BOOT)
+	$(call color_header, "Launching objdump - $(CHAINLOADER_ASSEMBLED_BOOT)")
+	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY)  -d $(CHAINLOADER_ASSEMBLED_BOOT)
 
 
 #objdump: $(KERNEL_ELF)
@@ -259,9 +269,9 @@ objdump: $(KERNEL_ELF)
 ##------------------------------------------------------------------------------
 ## Run nm
 ##------------------------------------------------------------------------------
-nm: $(KERNEL_ELF)
+nm: $(CHAINLOADER_KERNEL_ELF)
 	$(call color_header, "Launching nm")
-	@$(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $(KERNEL_ELF) | sort | rustfilt
+	@$(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $(CHAINLOADER_KERNEL_ELF) | sort | rustfilt
 
 
 mir: ${KERNEL_ELF_DEPS}
@@ -276,7 +286,7 @@ do_chainboot : $(KERNEL_BIN)
 	@$(EXEC_MINIPUSH) $(DEV_SERIAL) $(KERNEL_BIN)
 
 
-gdb: 
+gdb:
 	$(call color_header, "Launching GDB")
 	@gdb  $(QEMU_KERNEL_ELF)
 
@@ -328,6 +338,7 @@ check:
 
 
 $(KERNEL_LIB): $(KERNEL_ELF_DEPS)
+	@echo $(COMPILER_ARGS)
 	@$(RUSTC_LIB_CMD)
 	$(call color_header, "Compiling kernel static lib - $(BSP) with profile - $(PROFILE)")
 
@@ -335,6 +346,11 @@ $(ASSEMBLED_BOOT): $(BOOT_ASM)
 	$(call color_header, "Assembling boot.s")
 	@echo $(ASSEMBLED_BOOT)
 	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
+
+$(CHAINLOADER_ASSEMBLED_BOOT): $(CHAINLOADER_BOOT_ASM)
+	$(call color_header, "Assembling $(CHAINLOADER_BOOT_ASM)")
+	@echo $(CHAINLOADER_ASSEMBLED_BOOT)
+	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(CHAINLOADER_ASSEMBLED_BOOT) $(CHAINLOADER_BOOT_ASM)
 
 $(TEST_ASSEMBLED_BOOT): $(TEST_BOOT_ASM)
 	$(call color_header, "Assembling test-boot.s")
@@ -344,14 +360,19 @@ $(TEST_ASSEMBLED_BOOT): $(TEST_BOOT_ASM)
 $(KERNEL_ELF): $(KERNEL_LIB) $(ASSEMBLED_BOOT)
 	$(call color_header, "Linking kernel ELF - $(BSP)")
 	$(call color_header, "Output kernel ELF - $(KERNEL_ELF)")
-	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB) 
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(LD_SCRIPT_PATH) -n -o $(KERNEL_ELF) $(ASSEMBLED_BOOT) $(KERNEL_LIB)
 
 $(QEMU_KERNEL_ELF): $(KERNEL_LIB) $(TEST_ASSEMBLED_BOOT)
 	$(call color_header, "Linking qemu kernel ELF - $(BSP)")
 	$(call color_header, "Output qemu kernel ELF - $(QEMU_KERNEL_ELF)")
-	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(TEST_KERNEL_LINKER_SCRIPT_PATH) -n -o $(QEMU_KERNEL_ELF) $(TEST_ASSEMBLED_BOOT) $(KERNEL_LIB) 
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(TEST_KERNEL_LINKER_SCRIPT_PATH) -n -o $(QEMU_KERNEL_ELF) $(TEST_ASSEMBLED_BOOT) $(KERNEL_LIB)
 
 
+$(CHAINLOADER_KERNEL_ELF): $(KERNEL_LIB) $(CHAINLOADER_ASSEMBLED_BOOT)
+	$(call color_header, "Linking kernel ELF - $(BSP)")
+	$(call color_header, "Output kernel ELF - $(CHAINLOADER_KERNEL_ELF)")
+	$(call color_header, "Linker script - $(CHAINLOADER_LD_SCRIPT_PATH)")
+	@$(DOCKER_TOOLS) aarch64-none-elf-ld -T  $(CHAINLOADER_LD_SCRIPT_PATH) -n -o $(CHAINLOADER_KERNEL_ELF) $(CHAINLOADER_ASSEMBLED_BOOT) $(KERNEL_LIB)
 
 $(KERNEL_BIN): $(KERNEL_ELF)
 	$(call color_header, "Generating stripped binary with kernel elf - $(KERNEL_ELF)")
@@ -369,3 +390,16 @@ $(QEMU_KERNEL_BIN): $(QEMU_KERNEL_ELF)
 	$(call color_progress_prefix, "Size")
 	$(call disk_usage_KiB, $(QEMU_KERNEL_BIN))
 
+$(CHAINLOADER_KERNEL_BIN): $(CHAINLOADER_KERNEL_ELF)
+	$(call color_header, "Generating stripped binary with kernel elf - $(CHAINLOADER_KERNEL_ELF)")
+	@$(OBJCOPY_CMD) $(CHAINLOADER_KERNEL_ELF) $(CHAINLOADER_KERNEL_BIN)
+	$(call color_progress_prefix, "Name")
+	@echo $(CHAINLOADER_KERNEL_BIN)
+	$(call color_progress_prefix, "Size")
+	$(call disk_usage_KiB, $(CHAINLOADER_KERNEL_BIN))
+
+chainloader: FEATURES := --features build_chainloader
+chainloader: COMPILER_ARGS += --release
+chainloader: PROFILE = release
+chainloader: do_chainloader
+do_chainloader: $(CHAINLOADER_KERNEL_BIN)
