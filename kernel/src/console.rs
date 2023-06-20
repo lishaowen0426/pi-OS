@@ -1,34 +1,8 @@
-use crate::{bsp::device_driver::MiniUartInner, errno::ErrorCode, synchronization::Spinlock};
+use crate::{bsp::device_driver::mini_uart, errno::ErrorCode, synchronization::Spinlock};
 use core::fmt;
 use spin::once::Once;
 
-pub struct Console<T>
-where
-    T: fmt::Write,
-{
-    io: Spinlock<T>,
-}
-
-impl<T> Console<T>
-where
-    T: fmt::Write,
-{
-    pub fn new(inner: T) -> Self {
-        Self {
-            io: Spinlock::new(inner),
-        }
-    }
-    pub fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result {
-        write!(self.io.lock(), "{}", args)
-    }
-}
-
-pub static CONSOLE: Once<Console<MiniUartInner>> = Once::new();
-
 pub fn init() -> Result<(), ErrorCode> {
-    CONSOLE.call_once(|| Console {
-        io: Spinlock::new(MiniUartInner::new()),
-    });
     Ok(())
 }
 

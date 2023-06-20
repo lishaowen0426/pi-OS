@@ -1,22 +1,23 @@
-use crate::console::CONSOLE;
-use core::fmt;
-
-#[cfg(not(feature = "build_qemu"))]
-pub fn _print(args: fmt::Arguments) {
-    CONSOLE.get().unwrap().write_fmt(args).unwrap();
-}
+use core::{fmt, fmt::Write};
+use spin::once::Once;
 
 #[cfg(feature = "build_qemu")]
 pub fn _unsafe_print(args: fmt::Arguments) {
     _print(args)
 }
 
-#[cfg(feature = "build_qemu")]
 pub fn _print(args: fmt::Arguments) {
-    use crate::console::QEMU_CONSOLE;
-    use core::fmt::Write;
-    unsafe {
-        QEMU_CONSOLE.write_fmt(args).unwrap();
+    #[cfg(feature = "build_qemu")]
+    {
+        use crate::console::QEMU_CONSOLE;
+        unsafe {
+            QEMU_CONSOLE.write_fmt(args).unwrap();
+        }
+    }
+    #[cfg(not(feature = "build_qemu"))]
+    {
+        use crate::bsp::device_driver::mini_uart::MINI_UART;
+        MINI_UART.get().unwrap().write_fmt(args).unwrap();
     }
 }
 
