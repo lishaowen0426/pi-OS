@@ -63,8 +63,9 @@ _start:
     adr_link    x0, __boot_core_stack_end_exclusive
     mov         sp, x0
 
-    adr_link    x0, chainloader_main
-    br          x0
+    adr_link    x2, chainloader_main
+    ldr         x0, =.L_KERNEL_BASE
+    br          x2
 
 
 	// Infinitely wait for events (aka "park the core").
@@ -80,7 +81,7 @@ _start:
 clear_memory_range:
     stp         xzr, xzr, [x0], #16
     cmp         x0, x1
-    b.ne        clear_memory_range
+    b.lt        clear_memory_range
     ret
 
 

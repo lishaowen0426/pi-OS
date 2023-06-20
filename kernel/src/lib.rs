@@ -56,6 +56,10 @@ use generics::*;
 use interrupt::IRQ_CONTROLLER;
 use memory::address::*;
 use tock_registers::interfaces::{Readable, Writeable};
+
+extern "C" {
+    fn clear_memory_range(start: usize, end_exclusive: usize);
+}
 // 32 bytes * 4 + 16 + 16 + 16
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -161,10 +165,14 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
 }
 #[cfg(not(test))]
 #[no_mangle]
-pub unsafe fn chainloader_main() -> ! {
+pub unsafe fn chainloader_main(kernel_base: usize) -> ! {
     bsp::device_driver::gpio::init().unwrap();
     bsp::device_driver::mini_uart::init().unwrap();
     println!("");
     println!("Welcome to chainloader!");
+    println!("Cleaning...");
+    clear_memory_range(0usize, kernel_base);
+    println!("Cleaning Completed!");
+
     loop {}
 }
