@@ -1,4 +1,4 @@
-.equ .L_KERNEL_BASE, 0 
+.equ .L_KERNEL_BASE, 0x2000000
 .equ  .L_CONST_EL2, 0b1000
 .equ .L_CONST_CORE_ID_MASK , 0b11
 .equ .L_BOOT_CORE_ID,  0
@@ -23,13 +23,11 @@
 //--------------------------------------------------------------------------------------------------
 .section .text._start
 
-
 _start:
     mrs         x0, CurrentEL
     ldr         x1, =.L_CONST_EL2
     cmp         x0, x1
     b.ne        .L_parking_loop
-
 
 
     mrs         x1, MPIDR_EL1
@@ -46,7 +44,7 @@ _start:
 
 .L_bss_init_loop:
     cmp         x2, x3
-    b.eq        .L_chainloader_main
+    b.eq        .L_relocate_binary
     stp         xzr, xzr, [x2], #16
     b           .L_bss_init_loop
 
@@ -59,7 +57,7 @@ _start:
     ldp         x5, x6, [x2], #16
     stp         x5, x6, [x3], #16
     cmp         x3, x4
-    b.lo        .L_copy_loop
+    b.lt        .L_copy_loop
 
 .L_chainloader_main:
     adr_link    x0, __boot_core_stack_end_exclusive

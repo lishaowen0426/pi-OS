@@ -1,8 +1,5 @@
-__rpi_phys_dram_start_addr = 0;
-__rpi_phys_binary_load_addr = 0x80000;
-
-/*KERNEL_BASE = 0x2000000;*/
-KERNEL_BASE = 0;
+KERNEL_BASE = 0x2000000;
+/*KERNEL_BASE = 0;*/
 LOADER_OFFSET = 0x80000;
 
 ENTRY(LOADER_OFFSET);

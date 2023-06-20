@@ -164,6 +164,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
 pub unsafe fn chainloader_main() -> ! {
     bsp::device_driver::gpio::init().unwrap();
     bsp::device_driver::mini_uart::init().unwrap();
+    println!("");
     println!("Welcome to chainloader!");
     loop {}
 }
