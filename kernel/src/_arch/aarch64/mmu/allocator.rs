@@ -427,8 +427,4 @@ mod tests {
             value.vma.end
         }
     }
-    #[kernel_test]
-    fn test_rbtree() {
-        {}
-    }
 }

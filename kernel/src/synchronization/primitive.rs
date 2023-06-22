@@ -91,8 +91,4 @@ unsafe impl RawMutex for IRQSafeSpinlock {
 mod tests {
     use super::*;
     use test_macros::kernel_test;
-    #[kernel_test]
-    fn test_spinlock() {
-        {}
-    }
 }

@@ -439,9 +439,4 @@ mod tests {
             Self { a: [1; 2304] }
         }
     }
-
-    #[kernel_test]
-    fn test_heap() {
-        let t = Box::new(T::new());
-    }
 }

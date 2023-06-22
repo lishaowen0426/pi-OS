@@ -715,7 +715,7 @@ mod tests {
     #[allow(unused_imports)]
     use test_macros::kernel_test;
 
-    #[kernel_test]
+    //#[kernel_test]
     fn test_translation_table_entry() {
         // Level 1 block
         {

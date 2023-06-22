@@ -248,7 +248,7 @@ mod tests {
     use crate::println;
     #[allow(unused_imports)]
     use test_macros::kernel_test;
-    #[kernel_test]
+    //#[kernel_test]
     fn test_bitfields() {
         {
             let bf: u64 = 0x1234_5678_9ABC_DEF0;

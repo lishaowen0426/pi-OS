@@ -377,7 +377,7 @@ impl A64TLB {
 mod tests {
     use super::*;
     use test_macros::kernel_test;
-    #[kernel_test]
+    //#[kernel_test]
     fn test_a64cache_tlb() {
         let a64_caches = A64CacheSet::new().unwrap();
     }

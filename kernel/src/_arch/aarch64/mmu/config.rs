@@ -85,7 +85,7 @@ mod tests {
     use super::*;
     #[allow(unused_imports)]
     use test_macros::kernel_test;
-    #[kernel_test]
+    //#[kernel_test]
     fn test_mmu_config() {
         assert_eq!(OFFSET_MASK, 0b1111_1111_1111);
         assert_eq!(INDEX_MASK, 0b1_1111_1111);

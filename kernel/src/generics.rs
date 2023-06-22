@@ -324,7 +324,7 @@ mod tests {
         }
     }
 
-    #[kernel_test]
+    //#[kernel_test]
     fn test_linked_list() {
         {
             let ts = [

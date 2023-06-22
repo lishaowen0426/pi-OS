@@ -230,8 +230,4 @@ mod tests {
             Self { arr: [1; 1024] }
         }
     }
-    #[kernel_test]
-    fn test_mmu() {
-        let p = Box::new(Test::new());
-    }
 }

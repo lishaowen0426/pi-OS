@@ -359,6 +359,4 @@ mod tests {
         interfaces::{ReadWriteable, Readable, Writeable},
         registers::InMemoryRegister,
     };
-    #[kernel_test]
-    fn test_exception() {}
 }

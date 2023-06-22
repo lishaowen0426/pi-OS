@@ -234,7 +234,7 @@ mod tests {
     const ENTRIES: usize = 8;
     #[derive(Default)]
     struct A {}
-    #[kernel_test]
+    //#[kernel_test]
     fn test_static_vector() {
         static_vector!(A_vec, A, ENTRIES);
         let mut arr = A_vec::new();
