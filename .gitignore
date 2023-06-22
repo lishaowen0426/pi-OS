@@ -4,6 +4,7 @@
 *.img
 .idea/
 test_cases/
+*.elf
 
 node_modules
 .bundle
