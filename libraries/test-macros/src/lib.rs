@@ -90,6 +90,11 @@ pub fn doubly_linkable(input: TokenStream, annotated_item: TokenStream) -> Token
     .into()
 }
 
+#[proc_macro_attribute]
+pub fn byte_enum(input: TokenStream, annotated_item: TokenStream) -> TokenStream {
+    TokenStream::new()
+}
+
 #[cfg(test)]
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
