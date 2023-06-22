@@ -23,7 +23,7 @@
 //! | .got                                  |
 //! |                                       |
 
-#[cfg(feature = "bsp_rpi3")]
+#[cfg(feature = "build_qemu")]
 pub mod mmio {
     use super::*;
 

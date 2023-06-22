@@ -13,7 +13,7 @@ pub use driver::*;
 pub use memory::*;
 
 pub fn board_name() -> &'static str {
-    #[cfg(feature = "bsp_rpi3")]
+    #[cfg(feature = "build_qemu")]
     {
         "Raspberry Pi 3"
     }

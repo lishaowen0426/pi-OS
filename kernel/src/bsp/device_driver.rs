@@ -2,9 +2,9 @@ pub mod gpio;
 pub mod mini_uart;
 mod utils;
 
-#[cfg(feature = "bsp_rpi3")]
+#[cfg(feature = "build_qemu")]
 pub mod bcm_ic;
-#[cfg(feature = "bsp_rpi3")]
+#[cfg(feature = "build_qemu")]
 pub use bcm_ic as interrupt_controller;
 
 #[cfg(any(feature = "bsp_rpi4", feature = "build_chainloader"))]
