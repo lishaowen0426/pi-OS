@@ -4,7 +4,7 @@ pub use asm::nop;
 #[path = "cpu/registers.rs"]
 pub mod registers;
 
-#[cfg(feature = "bsp_rpi3")]
+#[cfg(feature = "build_qemu")]
 #[inline(always)]
 pub fn spin_for_cycles(n: usize) {
     for _ in 0..n {
@@ -22,20 +22,20 @@ pub fn wait_forever() -> ! {
 //--------------------------------------------------------------------------------------------------
 // Testing
 //--------------------------------------------------------------------------------------------------
-#[cfg(feature = "test_build")]
+#[cfg(feature = "build_qemu")]
 use qemu_exit::QEMUExit;
 
-#[cfg(feature = "test_build")]
+#[cfg(feature = "build_qemu")]
 const QEMU_EXIT_HANDLE: qemu_exit::AArch64 = qemu_exit::AArch64::new();
 
 /// Make the host QEMU binary execute `exit(1)`.
-#[cfg(feature = "test_build")]
+#[cfg(feature = "build_qemu")]
 pub fn qemu_exit_failure() -> ! {
     QEMU_EXIT_HANDLE.exit_failure()
 }
 
 /// Make the host QEMU binary execute `exit(0)`.
-#[cfg(feature = "test_build")]
+#[cfg(feature = "build_qemu")]
 pub fn qemu_exit_success() -> ! {
     QEMU_EXIT_HANDLE.exit_success()
 }

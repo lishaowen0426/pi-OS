@@ -10,12 +10,12 @@ use core::panic::PanicInfo;
 #[linkage = "weak"]
 #[no_mangle]
 fn _panic_exit() -> ! {
-    #[cfg(not(feature = "test_build"))]
+    #[cfg(not(feature = "build_qemu"))]
     {
         cpu::wait_forever()
     }
 
-    #[cfg(feature = "test_build")]
+    #[cfg(feature = "build_qemu")]
     {
         cpu::qemu_exit_failure()
     }

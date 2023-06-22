@@ -87,7 +87,7 @@ KERNEL_LIB_DEPS = $(filter-out %: ,$(file < $(KERNEL_LIB).d)) $(KERNEL_MANIFEST)
 ##--------------------------------------------------------------------------------------------------
 KERNEL_MANIFEST      = $(shell pwd)/kernel/Cargo.toml
 KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/kernel.ld
-TEST_KERNEL_LINKER_SCRIPT_PATH =./kernel/src/bsp/raspberrypi/test-kernel.ld
+TEST_KERNEL_LINKER_SCRIPT_PATH =./kernel/src/_arch/aarch64/cpu/test.ld
 LAST_BUILD_CONFIG    = target/$(BSP).build_config
 
 KERNEL_ELF      = target/$(TARGET)/$(PROFILE)/kernel
@@ -313,8 +313,6 @@ define KERNEL_TEST_RUNNER
 	echo $$TEST_BINARY
 	echo $$TEST_ELF
 
-	# $(DOCKER_TOOLS) $(READELF_BINARY) --headers $$TEST_ELF
-	# $(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $$TEST_ELF | sort | rustfilt
     $(OBJCOPY_CMD) $$TEST_ELF $$TEST_BINARY
     $(DOCKER_TEST) ruby common/tests/dispatch.rb $(EXEC_QEMU) $(QEMU_TEST_ARGS)  -kernel $$TEST_BINARY
 endef
@@ -330,6 +328,7 @@ endef
 test_unit: $(TEST_ASSEMBLED_BOOT)
 	$(call color_header, "Compiling unit test(s) - $(BSP)")
 	$(call test_prepare)
+	@echo $(RUSTFLAGS_TEST_UNIT)
 	RUSTFLAGS="$(RUSTFLAGS_TEST_UNIT)" $(TEST_CMD)
 
 check:
@@ -345,7 +344,7 @@ $(KERNEL_LIB): $(KERNEL_ELF_DEPS)
 $(ASSEMBLED_BOOT): $(BOOT_ASM)
 	$(call color_header, "Assembling boot.s")
 	@echo $(ASSEMBLED_BOOT)
-	@$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
+	$(DOCKER_TOOLS) $(AS_BINARY) $(AS_ARGS)  -o $(ASSEMBLED_BOOT) $(BOOT_ASM)
 
 $(CHAINLOADER_ASSEMBLED_BOOT): $(CHAINLOADER_BOOT_ASM)
 	$(call color_header, "Assembling $(CHAINLOADER_BOOT_ASM)")

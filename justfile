@@ -18,6 +18,8 @@ kernel_manifest := `pwd`/"kernel/Cargo.toml"
 
 dev_serial := "/dev/cu.usbserial-AQ043M36"
 
+test_rustc_flags := "-C target-cpu=cortex-a72 -C link-arg=--library-path=./target/aarch64-unknown-none-softfloat -C link-arg=--library=:test-boot.o -C link-arg=--script=./kernel/src/_arch/aarch64/cpu/test.ld"
+
 load_kernel: (build_kernel "kernel") 
     ruby ./common/serial/minipush.rb {{dev_serial}} kernel.img
     
@@ -29,27 +31,33 @@ chainloader: (build_kernel "chainloader")
 
 
 compile_boot TARGET:
-    @docker {{docker_arg}} {{as_binary}} -mcpu=cortex-a72 -I {{asm_path}} -o {{output_path}}/{{TARGET}}-boot.o  {{asm_path}}/{{TARGET}}-boot.s 
+    @if [ "{{TARGET}}" == "kernel" ];then \
+        docker {{docker_arg}} {{as_binary}} -mcpu=cortex-a72 -I {{asm_path}} -o {{output_path}}/{{TARGET}}-boot.o {{asm_path}}/{{TARGET}}-boot.s;\
+    elif [ "{{TARGET}}" == "test" ];then \
+        docker {{docker_arg}} {{as_binary}} -mcpu=cortex-a72 -I {{asm_path}} --defsym QEMU_MODE=1 -o {{output_path}}/{{TARGET}}-boot.o {{asm_path}}/{{TARGET}}-boot.s;\
+    else \
+        echo 'Chainloader!'; \
+    fi
 
 
 compile_lib TARGET: (compile_boot TARGET)  
     @if [ "{{TARGET}}" == "kernel" ];then \
         cargo rustc --manifest-path {{kernel_manifest}} --features bsp_rpi4 --lib --release;\
     elif [ "{{TARGET}}" == "test" ];then \
-        echo 'Test!'; \
+        RUSTFLAGS="{{test_rustc_flags}}" cargo test --target=aarch64-unknown-none-softfloat --manifest-path {{kernel_manifest}} --features build_qemu --lib;\
     else \
         echo 'Chainloader!'; \
     fi
 
 build_kernel TARGET: (compile_lib TARGET)
     @if [ "{{TARGET}}" == "kernel" ];then \
-        docker {{docker_arg}} {{ld_binary}} -T {{ld_path}}/{{TARGET}}.ld -n -o {{TARGET}}.elf {{output_path}}/{{TARGET}}-boot.o {{output_path}}/release/liblibkernel.a ;\
+        docker {{docker_arg}} {{ld_binary}} -T {{ld_path}}/{{TARGET}}.ld -n -o {{TARGET}}.elf {{output_path}}/{{TARGET}}-boot.o {{output_path}}/release/liblibkernel.a && rust-objcopy --strip-all -O binary {{TARGET}}.elf {{TARGET}}.img;\
     elif [ "{{TARGET}}" == "test" ];then \
         echo 'Test!'; \
     else \
         echo 'Chainloader!'; \
     fi
-    @rust-objcopy --strip-all -O binary {{TARGET}}.elf {{TARGET}}.img
+
 
 
 
