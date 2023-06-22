@@ -1,6 +1,7 @@
 alias l := load_kernel
 alias c := chainloader
 alias t := test_kernel
+alias m := miniterm
 
 set positional-arguments := true
 
@@ -20,8 +21,13 @@ dev_serial := "/dev/cu.usbserial-AQ043M36"
 
 test_rustc_flags := "-C target-cpu=cortex-a72 -C link-arg=--library-path=./target/aarch64-unknown-none-softfloat -C link-arg=--library=:test-boot.o -C link-arg=--script=./kernel/src/_arch/aarch64/cpu/test.ld"
 
+
+
+
+default: load_kernel
+
 load_kernel: (build_kernel "kernel") 
-    ruby ./common/serial/minipush.rb {{dev_serial}} kernel.img
+    @ruby ./common/serial/minipush.rb {{dev_serial}} kernel.img
     
 
 test_kernel: (build_kernel "test") 
@@ -36,7 +42,7 @@ compile_boot TARGET:
     elif [ "{{TARGET}}" == "test" ];then \
         docker {{docker_arg}} {{as_binary}} -mcpu=cortex-a72 -I {{asm_path}} --defsym QEMU_MODE=1 -o {{output_path}}/{{TARGET}}-boot.o {{asm_path}}/{{TARGET}}-boot.s;\
     else \
-        echo 'Chainloader!'; \
+        docker {{docker_arg}} {{as_binary}} -mcpu=cortex-a72 -I {{asm_path}} -o {{output_path}}/{{TARGET}}-boot.o {{asm_path}}/{{TARGET}}-boot.s;\
     fi
 
 
@@ -46,19 +52,21 @@ compile_lib TARGET: (compile_boot TARGET)
     elif [ "{{TARGET}}" == "test" ];then \
         RUSTFLAGS="{{test_rustc_flags}}" cargo test --target=aarch64-unknown-none-softfloat --manifest-path {{kernel_manifest}} --features build_qemu --lib;\
     else \
-        echo 'Chainloader!'; \
+        cargo rustc --manifest-path {{kernel_manifest}} --features build_chainloader --lib --release;\
     fi
 
 build_kernel TARGET: (compile_lib TARGET)
     @if [ "{{TARGET}}" == "kernel" ];then \
         docker {{docker_arg}} {{ld_binary}} -T {{ld_path}}/{{TARGET}}.ld -n -o {{TARGET}}.elf {{output_path}}/{{TARGET}}-boot.o {{output_path}}/release/liblibkernel.a && rust-objcopy --strip-all -O binary {{TARGET}}.elf {{TARGET}}.img;\
     elif [ "{{TARGET}}" == "test" ];then \
-        echo 'Test!'; \
+        echo "";\
     else \
-        echo 'Chainloader!'; \
+        docker {{docker_arg}} {{ld_binary}} -T {{ld_path}}/{{TARGET}}.ld -n -o {{TARGET}}.elf {{output_path}}/{{TARGET}}-boot.o {{output_path}}/release/liblibkernel.a && rust-objcopy --strip-all -O binary {{TARGET}}.elf {{TARGET}}.img;\
     fi
 
 
 
 
-
+miniterm:
+    @ruby ./common/serial/miniterm.rb {{dev_serial}}
+    
