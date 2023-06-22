@@ -9,11 +9,9 @@ edition = "2021"
 
 [features]
 default = []
-bsp_rpi3 = ["tock-registers"]
-bsp_rpi4 = ["tock-registers"]
-test_build = [ "build_qemu"]
-build_chainloader = ["tock-registers"]
-build_qemu = ["bsp_rpi3", "qemu-exit"]
+bsp_rpi4 = []
+build_chainloader = []
+build_qemu = ["qemu-exit"]
 
 [[bin]]
 name = "kernel"
@@ -34,7 +32,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 lock_api = "0.4.9"
-tock-registers = { version = "0.8.x", default-features = false, features = ["register_types"], optional = true }
+tock-registers = { version = "0.8.x", default-features = false, features = ["register_types"] }
 qemu-exit = { version = "3.x.x", optional = true }
 cfg-if = "1.0"
 test-types = {path = "../libraries/test-types"}
