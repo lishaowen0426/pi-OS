@@ -49,6 +49,7 @@ mod print;
 mod scheduler;
 mod synchronization;
 mod utils;
+mod wasm;
 
 use aarch64_cpu::{asm, registers::*};
 use core::{fmt, time::Duration};
@@ -140,19 +141,11 @@ fn test_runner(tests: &[&test_types::UnitTest]) {
 pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
     // exception::handling_init();
     // bsp::driver::qemu_bring_up_console();
-    println!(
-        "current exception level {}",
-        exception::current_privilege_level().1
-    );
-    println!("Boot info:");
-    println!("{}", boot_info);
+
+    // println!("Boot info:");
+    // println!("{}", boot_info);
     memory::init(boot_info).unwrap();
     cpu::timer::init().unwrap();
-
-    println!(
-        "System counter frequency {}",
-        cpu::timer::system_counter_frequency()
-    );
 
     let boot_duration = cpu::timer::TIMER.get().unwrap().now();
     println!("boot takes {} micros", boot_duration.as_micros());

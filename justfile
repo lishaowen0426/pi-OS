@@ -69,4 +69,7 @@ build_kernel TARGET: (compile_lib TARGET)
 
 miniterm:
     @ruby ./common/serial/miniterm.rb {{dev_serial}}
+
+check:
+    @cargo check --manifest-path {{kernel_manifest}} --features bsp_rpi4 --lib --release
     
