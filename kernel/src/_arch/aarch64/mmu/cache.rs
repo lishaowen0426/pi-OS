@@ -1,5 +1,5 @@
 use super::{address::*, config};
-use crate::{cpu::registers::*, type_enum, utils::bitfields::Bitfields};
+use crate::{cpu::registers::*, type_enum, type_enum_with_error, utils::bitfields::Bitfields};
 use aarch64_cpu::registers::*;
 use core::{arch::asm, fmt};
 use tock_registers::interfaces::{ReadWriteable, Readable};
@@ -152,7 +152,7 @@ impl fmt::Display for A64CacheSet {
 
 impl A64CacheSet {
     pub fn new() -> Option<A64CacheSet> {
-        let l1ip = L1InstPolicy::from(CTR_EL0.read(CTR_EL0::L1Ip) as u8);
+        let l1ip = L1InstPolicy::try_from(CTR_EL0.read(CTR_EL0::L1Ip) as u8).unwrap();
         let dminline = (1 << (CTR_EL0.read(CTR_EL0::DminLine))) * config::WORD_SIZE;
         let iminline = (1 << (CTR_EL0.read(CTR_EL0::IminLine))) * config::WORD_SIZE;
 
@@ -170,7 +170,8 @@ impl A64CacheSet {
 
         for n in 1..8 {
             let ctype =
-                CacheType::from(clidr_el1_raw.get_bits((3 * (n - 1))..(3 * (n - 1) + 3)) as u8);
+                CacheType::try_from(clidr_el1_raw.get_bits((3 * (n - 1))..(3 * (n - 1) + 3)) as u8)
+                    .unwrap();
             if ctype == CacheType::NoCache {
                 break;
             } else if ctype == CacheType::SeparateInstAndDataCache {

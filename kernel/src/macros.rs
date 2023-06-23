@@ -1,11 +1,10 @@
 use crate::errno::*;
 
 #[macro_export]
-macro_rules! type_enum {
-
+macro_rules! type_enum_with_error {
     ($vis:vis enum $name:ident {
-        $($variant:ident = $dis:expr ),*,
-    }) => {
+        $($variant:ident = $dis:expr ),*
+    }, $error_type: ty, $error_value: expr) => {
         #[derive(Eq, PartialEq, Copy, Clone)]
         #[repr(u8)]
         $vis enum $name {
@@ -40,29 +39,33 @@ macro_rules! type_enum {
             }
         }
 
-        impl From<u8> for $name {
-            fn from(val: u8) -> Self{
-                match val{
+
+        impl TryFrom<u8> for $name{
+            type Error = $error_type;
+            fn try_from(value: u8) -> Result<Self, Self::Error>{
+                match value{
                     $(
-                      $dis  => Self::$variant,
+                      $dis  =>Ok(Self::$variant),
 
                     )*
-                    _ => Self::Undefined,
+                    _ => Err($error_value),
                 }
             }
-        }
-        impl From<u32> for $name {
-            fn from(val: u32) -> Self{
-                match val{
-                    $(
-                      $dis  => Self::$variant,
 
-                    )*
-                    _ => Self::Undefined,
-                }
-            }
         }
+
+
+
     };
+}
+#[macro_export]
+macro_rules! type_enum {
+    ($vis:vis enum $name:ident {
+        $($variant:ident = $dis:expr ),* $(,)?
+    }) => { type_enum_with_error!($vis enum $name {$($variant = $dis),* }, (), ());};
+    ($vis:vis enum $name:ident {
+        $($variant:ident = $dis:expr ),* $(,)?
+    }, $error_type: ty, $error_value: expr) => {type_enum_with_error!($vis enum $name {$($variant = $dis),* }, $error_type, $error_value);};
 }
 
 // Copy from aarch64_cpu

@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     errno::*,
     generics::{DoublyLink, DoublyLinkable, DoublyLinkedList, Link},
-    print, println, static_vector, type_enum,
+    print, println, static_vector, type_enum, type_enum_with_error,
     utils::bitfields::Bitfields,
 };
 use core::{
