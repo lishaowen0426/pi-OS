@@ -63,9 +63,51 @@ impl<L: TranslationTableLevel> UnsafeTranslationTable<L> {
             Ok(())
         }
     }
+    pub fn set_invalid(&self, idx: usize) -> Result<(), ErrorCode> {
+        if idx >= config::ENTRIES_PER_TABLE {
+            Err(EBOUND)
+        } else {
+            unsafe {
+                let target: usize =
+                    self.base as usize + idx * core::mem::size_of::<TranslationTableEntry<L>>();
+                core::ptr::write_volatile(target as *mut u64, 0);
+
+                asm!("DSB SY", "ISB SY", "TLBI VMALLE1", "DSB SY", "ISB SY");
+            }
+            Ok(())
+        }
+    }
 }
 
 impl UnsafeTranslationTable<Level1> {
+    pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {
+        let mut l1_entry = self[va.level1()].get();
+
+        match l1_entry {
+            Descriptor::TableEntry(_) => {
+                let l2_table = UnsafeTranslationTable::<Level2>::new(
+                    Self::l2_table_address(va) as *mut L2Entry
+                );
+                let l2_entry = l2_table[va.level2()].get();
+                match l2_entry {
+                    Descriptor::TableEntry(_) => {
+                        let l3_table = UnsafeTranslationTable::<Level3>::new(
+                            Self::l3_table_address(va) as *mut L3Entry,
+                        );
+                        let l3_entry = l3_table[va.level3()].get();
+                        match l3_entry {
+                            Descriptor::PageEntry(_) => l3_table.set_invalid(va.level3()),
+                            _ => Err(EUNMAP),
+                        }
+                    }
+                    Descriptor::L2BlockEntry(_) => l2_table.set_invalid(va.level2()),
+                    _ => Err(EUNMAP),
+                }
+            }
+            Descriptor::L1BlockEntry(_) => self.set_invalid(va.level1()),
+            _ => Err(EUNMAP),
+        }
+    }
     pub fn translate(&self, va: VirtualAddress) -> Option<PhysicalAddress> {
         let l1_entry = self[va.level1()].get();
 

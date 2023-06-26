@@ -1,5 +1,5 @@
 use crate::println;
-use core::{convert::Into, ops::Range};
+use core::{arch::asm, convert::Into, ops::Range};
 
 pub trait Bitfields {
     type Output;

@@ -39,7 +39,7 @@ fn add_doubly_linkable(item: proc_macro2::TokenStream) -> proc_macro2::TokenStre
     quote!(#item_struct)
 }
 
-fn impl_double_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+fn _impl_double_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let item = syn::parse2::<ItemStruct>(tokens).unwrap();
     let mut found = false;
     for f in item.fields.iter() {
@@ -80,9 +80,21 @@ fn impl_double_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenS
 
 #[proc_macro_error]
 #[proc_macro_attribute]
-pub fn doubly_linkable(input: TokenStream, annotated_item: TokenStream) -> TokenStream {
+pub fn doubly_linkable(_: TokenStream, annotated_item: TokenStream) -> TokenStream {
     let ast = add_doubly_linkable(annotated_item.into());
-    let impl_token = impl_double_linkable(ast.clone());
+    let impl_token = _impl_double_linkable(ast.clone());
+    quote!(
+        #ast
+        #impl_token
+    )
+    .into()
+}
+
+#[proc_macro_error]
+#[proc_macro_attribute]
+pub fn impl_doubly_linkable(_: TokenStream, annotated_item: TokenStream) -> TokenStream {
+    let ast: proc_macro2::TokenStream = annotated_item.clone().into();
+    let impl_token = _impl_double_linkable(annotated_item.clone().into());
     quote!(
         #ast
         #impl_token

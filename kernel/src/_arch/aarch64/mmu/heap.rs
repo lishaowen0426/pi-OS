@@ -7,13 +7,11 @@ use crate::{
 };
 use core::{
     alloc::{GlobalAlloc, Layout},
-    cell::{SyncUnsafeCell, UnsafeCell},
     fmt,
     ops::Deref,
 };
-use intrusive_collections::linked_list::AtomicLinkOps;
 use spin::{mutex::SpinMutex, once::Once, Spin};
-use test_macros::doubly_linkable;
+use test_macros::impl_doubly_linkable;
 
 const BACKEND_FREE_4K: usize = 16;
 const BACKEND_FREE_2M: usize = 8;
@@ -22,14 +20,12 @@ const SLABS_LENGTH_LIMIT: usize = 4; // the maximum number of object page a szal
 
 type AllocationMap = [u64; 8];
 
-#[doubly_linkable]
+#[impl_doubly_linkable]
 #[repr(C)]
 struct ObjectPage<const SIZE: usize>
 where
     [(); SIZE - core::mem::size_of::<AllocationMap>() - 3 * core::mem::size_of::<usize>()]:,
 {
-    data: [u8; SIZE - core::mem::size_of::<AllocationMap>() - 3 * core::mem::size_of::<usize>()],
-
     // 1 means the location is allocated
     // index 0 starts from the rightmost bit of the last array element
     // note this is different from how we index an array
@@ -42,6 +38,9 @@ where
     // this is actually the first element
     allocated: AllocationMap,
     count: usize,
+    doubly_link: DoublyLink<Self>,
+
+    data: [u8; SIZE - core::mem::size_of::<AllocationMap>() - 3 * core::mem::size_of::<usize>()],
 }
 
 impl<const SIZE: usize> ObjectPage<SIZE>
@@ -75,6 +74,7 @@ where
     }
 
     fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+        println!("alloc {}, align = {}", layout.size(), layout.align());
         let offset = self.allocated.first_zero();
         let ptr: usize = self.data.as_ptr() as usize + offset * layout.size();
 
@@ -85,11 +85,19 @@ where
         if self.allocated.get_bit(offset) == 1 {
             return None;
         }
+
+        let allocated = ptr as *mut u8;
+        let alignment = layout.align();
+        if !allocated.is_aligned_to(alignment) {
+            return None;
+        }
+
         self.allocated.set_bit(offset, 1);
         self.count = self.count + 1;
-        Some(ptr as *mut u8)
+        Some(allocated)
     }
     fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
+        println!("dealloc {}", layout.size());
         let base = self.data.as_ptr() as usize;
 
         let diff = ptr as usize - base;
@@ -98,6 +106,10 @@ where
         } else if diff + layout.size() > self.data.len() {
             Err(EOVERFLOW)
         } else {
+            unsafe {
+                ptr.write_bytes(0, layout.size());
+            }
+
             let offset = diff / layout.size();
             self.allocated.set_bit(offset, 0);
             self.count = self.count - 1;
@@ -114,8 +126,8 @@ static_vector!(Free2MVec, VaRange, BACKEND_FREE_2M);
 static_vector!(ObjectPageVec, VaRange, OBJECT_PAGE_PER_SIZE_CLASS);
 
 struct HeapBackend {
-    free_4K: Free4KVec,
-    free_2M: Free2MVec,
+    free_4K: DoublyLinkedList<ObjectPage4K>,
+    free_2M: DoublyLinkedList<ObjectPage2M>,
 }
 struct HeapFrontend {
     sc_allocator: [SizeClassAllocator; 10],
@@ -160,8 +172,8 @@ impl SizeClassAllocator {
         }
     }
 
-    pub fn refill(&mut self, va_range: VaRange) -> Result<(), ErrorCode> {
-        self.slabs.push_front(Link::some(va_range.start().value()));
+    pub fn refill(&mut self, start: usize) -> Result<(), ErrorCode> {
+        self.slabs.push_front(Link::some(start));
         Ok(())
     }
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
@@ -217,15 +229,19 @@ struct UnsafeHeapAllocator {
 impl HeapBackend {
     pub fn new() -> Self {
         Self {
-            free_4K: Free4KVec::new(),
-            free_2M: Free2MVec::new(),
+            free_4K: DoublyLinkedList::new(),
+            free_2M: DoublyLinkedList::new(),
         }
     }
     fn insert(&mut self, va: VaRange) -> Result<(), ErrorCode> {
         if va.is_4K() {
-            self.free_4K.push(va)
+            let l = Link::some(va.start().value());
+            self.free_4K.push_front(l);
+            Ok(())
         } else if va.is_2M() {
-            self.free_2M.push(va)
+            let l = Link::some(va.start().value());
+            self.free_2M.push_front(l);
+            Ok(())
         } else {
             Err(EPARAM)
         }
@@ -240,13 +256,13 @@ impl HeapBackend {
         self.insert(mapped.va)
     }
 
-    pub fn allocate_4K_free(&mut self) -> Result<VaRange, ErrorCode> {
-        if let Some(v) = self.free_4K.pop() {
-            Ok(v)
+    pub fn allocate_4K_free(&mut self) -> Result<usize, ErrorCode> {
+        if let Some(l) = self.free_4K.pop_front() {
+            Ok(l.ptr())
         } else {
             self.request_4K_from_system()?;
-            if let Some(vv) = self.free_4K.pop() {
-                Ok(vv)
+            if let Some(vv) = self.free_4K.pop_front() {
+                Ok(vv.ptr())
             } else {
                 Err(EUNKNOWN)
             }
@@ -303,9 +319,9 @@ impl HeapFrontend {
         }
     }
 
-    pub fn refill(&mut self, va_range: VaRange, layout: Layout) -> Result<(), ErrorCode> {
+    pub fn refill(&mut self, start: usize, layout: Layout) -> Result<(), ErrorCode> {
         let sc = Self::pick_size_class(layout.size() as u64) as usize;
-        self.sc_allocator[sc - 3].refill(va_range)
+        self.sc_allocator[sc - 3].refill(start)
     }
 
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
@@ -349,8 +365,8 @@ impl UnsafeHeapAllocator {
         if let Some(ptr) = self.frontend.alloc(layout) {
             Some(ptr)
         } else {
-            let va_range_4k = self.backend.allocate_4K_free().ok()?;
-            self.frontend.refill(va_range_4k, layout).ok()?;
+            let start = self.backend.allocate_4K_free().ok()?;
+            self.frontend.refill(start, layout).ok()?;
 
             let result = self.frontend.alloc(layout);
             result
@@ -429,7 +445,7 @@ mod tests {
     use super::*;
     use crate::println;
     use test_macros::kernel_test;
-
+    #[repr(C)]
     struct T {
         a: [u8; 2304],
     }
@@ -437,6 +453,13 @@ mod tests {
     impl T {
         fn new() -> Self {
             Self { a: [1; 2304] }
+        }
+    }
+
+    #[kernel_test]
+    fn test_heap() {
+        {
+            let p = Box::<T>::new_uninit();
         }
     }
 }

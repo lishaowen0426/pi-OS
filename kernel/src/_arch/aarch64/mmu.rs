@@ -210,7 +210,11 @@ impl MemoryManagementUnit {
     }
 
     pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {
-        todo!()
+        if va.is_lower() {
+            self.lower_l1.lock().unmap(va)
+        } else {
+            self.higher_l1.lock().unmap(va)
+        }
     }
 }
 
@@ -222,12 +226,15 @@ mod tests {
     use super::*;
     use test_macros::kernel_test;
 
-    struct Test {
-        arr: [u8; 1024],
-    }
-    impl Test {
-        fn new() -> Self {
-            Self { arr: [1; 1024] }
+    #[kernel_test]
+    fn test_mmu() {
+        let mapped = MMU.get().unwrap().allocate_stack(1).unwrap();
+        let start = mapped.va.start();
+        unsafe {
+            core::ptr::write_volatile(start.value() as *mut u8, 1);
         }
+        println!("write success!");
+
+        MMU.get().unwrap().unmap(start).unwrap();
     }
 }

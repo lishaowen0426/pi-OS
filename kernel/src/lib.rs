@@ -25,6 +25,7 @@
 #![feature(macro_metavar_expr)]
 #![feature(const_pointer_is_aligned)]
 #![feature(const_fmt_arguments_new)]
+#![feature(new_uninit)]
 #![no_std]
 // Testing
 #![cfg_attr(test, no_main)]

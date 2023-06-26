@@ -42,4 +42,5 @@ errno_decl!(
     ESUPPORTED => "Not supported",
     ESCHED => "Scheduler error",
     EUNKNOWN => "Unknown reason",
+    EUNMAP => "Address is not mapped",
 );
