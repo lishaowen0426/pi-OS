@@ -5,6 +5,7 @@
 #![allow(non_camel_case_types)]
 #![allow(unused_macros)]
 #![feature(asm_const)]
+#![feature(iter_advance_by)]
 #![feature(const_option)]
 #![feature(ptr_from_ref)]
 #![feature(generic_const_exprs)]

@@ -108,14 +108,14 @@ pub fn init(boot_info: &BootInfo) -> Result<(), ErrorCode> {
         if i == 0 {
             va_range = mapped.va;
         } else {
-            va_range.merge(&mapped.va);
+            va_range.merge(&mapped.va)?;
         }
     }
     println!("Allocated to heap allocator {}", va_range);
 
-    heap::heap_init(va_range).unwrap();
+    heap::heap_init(va_range)?;
 
-    allocator::init(&boot_info_copy).unwrap();
+    allocator::init(&boot_info_copy)?;
 
     Ok(())
 }

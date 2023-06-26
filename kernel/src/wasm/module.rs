@@ -1,8 +1,19 @@
-use crate::{errno::ErrorCode, type_enum, type_enum_with_error};
-use core::{fmt, marker::PhantomData};
+use crate::{
+    errno::{ErrorCode, EINVAL},
+    memory::heap::AllocBuffer,
+    type_enum, type_enum_with_error,
+};
+use core::{
+    fmt,
+    ops::{Deref, DerefMut, Index, IndexMut},
+};
 use nom::error::ErrorKind;
 
 mod parser;
+
+trait Parseable {
+    fn parse(input: &[u8]) -> Self;
+}
 
 type_enum!(
     enum SectionType {
@@ -57,16 +68,24 @@ enum ValType {
     Num(NumType),
     Vec(VecType),
     Ref(RefType),
+    Undefined,
 }
 
+impl Default for ValType {
+    fn default() -> Self {
+        Self::Undefined
+    }
+}
+
+#[derive(Default)]
 #[repr(C)]
 struct ResultType {
     values: WasmVector<ValType>,
 }
 
+#[derive(Default)]
 #[repr(C)]
 struct FuncType {
-    tag: u8,
     input: ResultType,
     output: ResultType,
 }
@@ -74,9 +93,48 @@ struct FuncType {
 #[repr(C)]
 struct WasmVector<T> {
     n: u32,
-    elements: *const T,
+    elements: *mut T,
 }
 
+impl<T> Default for WasmVector<T> {
+    fn default() -> Self {
+        Self {
+            n: 0u32,
+            elements: core::ptr::null_mut(),
+        }
+    }
+}
+
+impl<T> WasmVector<T> {
+    fn new(n: u32, elements: *mut T) -> Self {
+        Self { n, elements }
+    }
+
+    fn init(&mut self, n: u32, elements: *mut T) -> Result<(), ErrorCode> {
+        if n != 0 || !elements.is_null() {
+            Err(EINVAL)
+        } else {
+            self.n = n;
+            self.elements = elements;
+            Ok(())
+        }
+    }
+}
+
+impl<T> Index<usize> for WasmVector<T> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output {
+        unsafe { self.elements.offset(index as isize).as_ref().unwrap() }
+    }
+}
+
+impl<T> IndexMut<usize> for WasmVector<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        unsafe { self.elements.offset(index as isize).as_mut().unwrap() }
+    }
+}
+
+#[derive(Default)]
 #[repr(C)]
 struct SectionHeader {
     id: SectionType,
@@ -96,13 +154,56 @@ struct WasmSection<T> {
     cont: T,
 }
 
+impl<T> Default for WasmSection<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        Self {
+            header: SectionHeader::default(),
+            cont: T::default(),
+        }
+    }
+}
+
+impl<T> Deref for WasmSection<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.cont
+    }
+}
+
+impl<T> DerefMut for WasmSection<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cont
+    }
+}
+
+impl<T> WasmSection<T>
+where
+    T: Default,
+{
+    fn new(header: SectionHeader) -> Self {
+        Self {
+            header,
+            cont: T::default(),
+        }
+    }
+}
+
+type TypeSection = WasmSection<WasmVector<FuncType>>;
+
 pub struct WasmModule {
-    type_section: Option<WasmSection<WasmVector<FuncType>>>,
+    buffer: Option<AllocBuffer>,
+    type_section: Option<TypeSection>,
 }
 
 impl<'a> WasmModule {
     pub fn new() -> Self {
-        WasmModule { type_section: None }
+        WasmModule {
+            buffer: None,
+            type_section: None,
+        }
     }
 }
 

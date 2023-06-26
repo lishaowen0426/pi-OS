@@ -8,9 +8,12 @@ use crate::{
 use core::{
     alloc::{GlobalAlloc, Layout},
     fmt,
-    ops::Deref,
+    iter::Iterator,
+    marker::PhantomData,
+    ops::{Deref, Drop},
 };
-use spin::{mutex::SpinMutex, once::Once, Spin};
+
+use spin::{mutex::SpinMutex, once::Once};
 use test_macros::impl_doubly_linkable;
 
 const BACKEND_FREE_4K: usize = 16;
@@ -384,6 +387,91 @@ impl UnsafeHeapAllocator {
     }
 }
 
+pub struct AllocBuffer {
+    start: usize,
+    end: usize, // exclusive
+}
+
+pub struct AllocBufferIter {
+    next: usize,
+    end: usize,
+}
+
+impl Iterator for AllocBufferIter {
+    type Item = *mut u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.end {
+            None
+        } else {
+            self.next = self.next + 1;
+            Some((self.next - 1) as *mut u8)
+        }
+    }
+}
+
+impl AllocBufferIter {
+    const fn new(start: usize, end: usize) -> Self {
+        Self { next: start, end }
+    }
+    pub fn construct<T>(&mut self) -> Result<*mut T, ErrorCode> {
+        let layout = Layout::new::<T>();
+        let align_offset = (self.next as *mut u8).align_offset(layout.align());
+
+        if self.next + align_offset + layout.size() > self.end {
+            Err(EOVERFLOW)
+        } else {
+            self.next = self.next + align_offset;
+            let ptr: *mut T = self.next as *mut T;
+            self.next = self.next + layout.size();
+            Ok(ptr)
+        }
+    }
+    pub fn construct_n<T>(&mut self, len: usize) -> Result<*mut T, ErrorCode> {
+        let layout = Layout::new::<T>();
+        let align_offset = (self.next as *mut u8).align_offset(layout.align());
+
+        if self.next + align_offset + len * layout.size() > self.end {
+            Err(EOVERFLOW)
+        } else {
+            self.next = self.next + align_offset;
+            let ptr: *mut T = self.next as *mut T;
+            self.next = self.next + len * layout.size();
+            Ok(ptr)
+        }
+    }
+
+    pub fn alloc_n(&mut self, len: usize) -> Result<*mut u8, ErrorCode> {
+        let ptr = self.next as *mut u8;
+        if let Ok(_) = self.advance_by(len) {
+            Ok(ptr)
+        } else {
+            Err(EOVERFLOW)
+        }
+    }
+}
+
+impl AllocBuffer {
+    pub fn new(range: VaRange) -> Self {
+        Self {
+            start: range.start().value(),
+            end: range.end().value(),
+        }
+    }
+
+    pub fn iter(&self) -> AllocBufferIter {
+        AllocBufferIter::new(self.start, self.end)
+    }
+}
+
+impl Drop for AllocBuffer {
+    fn drop(&mut self) {
+        MMU.get()
+            .unwrap()
+            .unmap(VirtualAddress::from(self.start))
+            .unwrap();
+    }
+}
+
 pub struct HeapAllocator {
     allocator: SpinMutex<UnsafeHeapAllocator>,
 }
@@ -399,7 +487,7 @@ impl HeapAllocator {
         self.allocator.lock().init(va)
     }
 
-    pub fn alloc(&self, layout: Layout) -> *mut u8 {
+    fn alloc(&self, layout: Layout) -> *mut u8 {
         if let Some(ptr) = self.allocator.lock().alloc(layout) {
             ptr
         } else {
@@ -409,6 +497,11 @@ impl HeapAllocator {
 
     fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         self.allocator.lock().dealloc(ptr, layout)
+    }
+
+    pub fn alloc_buffer(&self, npage: usize) -> Result<AllocBuffer, ErrorCode> {
+        let mapped = MMU.get().unwrap().kzalloc(npage, RWNORMAL, HIGHER_PAGE)?;
+        Ok(AllocBuffer::new(mapped.va))
     }
 }
 
@@ -445,21 +538,37 @@ mod tests {
     use super::*;
     use crate::println;
     use test_macros::kernel_test;
+    #[derive(Debug)]
     #[repr(C)]
     struct T {
-        a: [u8; 2304],
+        a: [u8; 16],
     }
 
     impl T {
         fn new() -> Self {
-            Self { a: [1; 2304] }
+            Self { a: [1; 16] }
         }
     }
 
     #[kernel_test]
     fn test_heap() {
         {
-            let p = Box::<T>::new_uninit();
+            let buffer = HEAP_ALLOCATOR.get().unwrap().alloc_buffer(1).unwrap();
+            let mut iter = buffer.iter();
+            let mut i = 0;
+            for i in 0..4096 / core::mem::size_of::<T>() {
+                iter.construct::<T>().unwrap();
+            }
+            assert!(iter.construct::<T>().is_err());
+        }
+        {
+            let buffer = HEAP_ALLOCATOR.get().unwrap().alloc_buffer(1).unwrap();
+            let mut iter = buffer.iter();
+            let arr = iter
+                .construct_n::<T>(4096 / core::mem::size_of::<T>())
+                .unwrap();
+
+            assert!(iter.construct::<T>().is_err());
         }
     }
 }

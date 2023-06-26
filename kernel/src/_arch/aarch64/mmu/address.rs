@@ -29,7 +29,7 @@ macro_rules! impl_address {
             pub const _4K: Self = Self(0x1000);
             pub const _2M: Self = Self(0x200000);
             pub const _1G: Self = Self(0x40000000);
-            pub fn value(&self) -> usize {
+            pub const fn value(&self) -> usize {
                 self.0
             }
             pub fn offset(&self) -> usize {

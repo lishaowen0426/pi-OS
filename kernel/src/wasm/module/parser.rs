@@ -1,5 +1,9 @@
 use super::*;
-use crate::{errno::ErrorCode, println};
+use crate::{
+    errno::ErrorCode,
+    memory::heap::{self, AllocBufferIter},
+    println,
+};
 use core::fmt;
 use nom::{
     bytes::complete::*,
@@ -45,126 +49,153 @@ const fn section_type_to_order_array() -> [u8; 13] {
 
 static SECTION_TYPE_TO_ORDER: [u8; 13] = section_type_to_order_array();
 
-pub struct WasmParser {}
+pub struct WasmParser {
+    alloc: Option<AllocBufferIter>,
+}
 
 impl WasmParser {
     pub const fn new() -> Self {
-        Self {}
+        Self { alloc: None }
     }
 
-    pub fn parse<'a>(self, input: &'a [u8], module: &mut WasmModule) -> ParserResult<'a, ()> {
-        check_magic_and_version_and_parse_sections(input, module)
+    pub fn parse<'a>(&mut self, input: &'a [u8], module: &mut WasmModule) -> ParserResult<'a, ()> {
+        self.check_magic_and_version_and_parse_sections(input, module)
     }
-}
-
-fn take_unsigned(N: usize, input: &[u8]) -> ParserResult<'_, u64> {
-    let (remaining, lower_bytes) = take_till(|b: u8| (b & 0b10000000) == 0)(input).finish()?;
-    let total_length = lower_bytes.len() + 1;
-    if total_length > N.div_ceil(7usize) {
-        Err(Error::new(remaining, ErrorKind::IsNot))
-    } else {
-        let (remaining, top_byte) = take(1usize)(remaining).finish()?;
-        let mut uN: u64 = 0;
-        let top_byte = top_byte[0];
-        for (idx, b) in lower_bytes.iter().enumerate() {
-            uN = uN | ((*b & 0b01111111u8) << (idx * 7)) as u64;
+    fn take_unsigned(N: usize, input: &[u8]) -> ParserResult<'_, u64> {
+        let (remaining, lower_bytes) = take_till(|b: u8| (b & 0b10000000) == 0)(input).finish()?;
+        let total_length = lower_bytes.len() + 1;
+        if total_length > N.div_ceil(7usize) {
+            Err(Error::new(remaining, ErrorKind::IsNot))
+        } else {
+            let (remaining, top_byte) = take(1usize)(remaining).finish()?;
+            let mut uN: u64 = 0;
+            let top_byte = top_byte[0];
+            for (idx, b) in lower_bytes.iter().enumerate() {
+                uN = uN | ((*b & 0b01111111u8) << (idx * 7)) as u64;
+            }
+            uN = uN | (top_byte << (lower_bytes.len() * 7)) as u64;
+            Ok((remaining, uN))
         }
-        uN = uN | (top_byte << (lower_bytes.len() * 7)) as u64;
-        Ok((remaining, uN))
     }
-}
 
-fn take_unsigned_32(input: &[u8]) -> ParserResult<'_, u32> {
-    take_unsigned(32usize, input).map(|(i, u)| (i, u as u32))
-}
-fn take_unsigned_64(input: &[u8]) -> ParserResult<'_, u64> {
-    take_unsigned(64usize, input)
-}
+    fn take_unsigned_32(input: &[u8]) -> ParserResult<'_, u32> {
+        Self::take_unsigned(32usize, input).map(|(i, u)| (i, u as u32))
+    }
+    fn take_unsigned_64(input: &[u8]) -> ParserResult<'_, u64> {
+        Self::take_unsigned(64usize, input)
+    }
 
-fn check_magic_and_version(input: &[u8]) -> ParserResult<'_, ()> {
-    let (remaining, output) = take(8usize)(input).finish()?;
-    if output != MAGIC_AND_VERSION {
-        Err(Error::new(remaining, ErrorKind::Verify))
-    } else {
+    fn check_magic_and_version(input: &[u8]) -> ParserResult<'_, ()> {
+        let (remaining, output) = take(8usize)(input).finish()?;
+        if output != MAGIC_AND_VERSION {
+            Err(Error::new(remaining, ErrorKind::Verify))
+        } else {
+            Ok((remaining, ()))
+        }
+    }
+
+    fn parse_section_header(input: &[u8]) -> ParserResult<'_, SectionHeader> {
+        let (remaining, output) = take(1usize)(input).finish()?;
+        let section_type = SectionType::try_from(output[0])
+            .map_err(|error_kind| Error::new(remaining, error_kind))?;
+        let (remaining, size) = Self::take_unsigned_32(remaining)?;
+        Ok((
+            remaining,
+            SectionHeader {
+                id: section_type,
+                size,
+            },
+        ))
+    }
+
+    fn parse_section_content<'a>(
+        &mut self,
+        input: &'a [u8],
+        section_header: SectionHeader,
+        module: &mut WasmModule,
+    ) -> ParserResult<'a, ()> {
+        println!("{}", section_header);
+        let (remaining, content) = take(section_header.size)(input).finish()?;
+        match section_header.id {
+            SectionType::Type => {
+                self.parse_type_section(section_header, content, module)?;
+            }
+            _ => {}
+        };
         Ok((remaining, ()))
     }
-}
 
-fn parse_section_header(input: &[u8]) -> ParserResult<'_, SectionHeader> {
-    let (remaining, output) = take(1usize)(input).finish()?;
-    let section_type =
-        SectionType::try_from(output[0]).map_err(|error_kind| Error::new(remaining, error_kind))?;
-    let (remaining, size) = take_unsigned_32(remaining)?;
-    Ok((
-        remaining,
-        SectionHeader {
-            id: section_type,
-            size,
-        },
-    ))
-}
+    fn check_magic_and_version_and_parse_sections<'a>(
+        &mut self,
+        input: &'a [u8],
+        module: &mut WasmModule,
+    ) -> ParserResult<'a, ()> {
+        let mut next_section_order: u8 = SECTION_TYPE_TO_ORDER[SectionType::Type as usize];
+        let (mut remaining, _) = Self::check_magic_and_version(input)?;
 
-fn parse_section_content<'a>(
-    input: &'a [u8],
-    section_header: SectionHeader,
-    module: &mut WasmModule,
-) -> ParserResult<'a, ()> {
-    println!("{}", section_header);
-    let (remaining, content) = take(section_header.size)(input).finish()?;
-    match section_header.id {
-        SectionType::Type => {
-            parse_type_section(section_header, content, module)?;
-        }
-        _ => {}
-    };
-    Ok((remaining, ()))
-}
+        let buffer_pages: usize = remaining.len().div_ceil(4096);
+        let alloc_buffer = heap::HEAP_ALLOCATOR
+            .get()
+            .unwrap()
+            .alloc_buffer(buffer_pages)
+            .map_err(|_| Error::new(remaining, ErrorKind::Fail))?;
+        self.alloc = Some(alloc_buffer.iter());
+        module.buffer = Some(alloc_buffer);
 
-fn check_magic_and_version_and_parse_sections<'a>(
-    input: &'a [u8],
-    module: &mut WasmModule,
-) -> ParserResult<'a, ()> {
-    let mut next_section_order: u8 = SECTION_TYPE_TO_ORDER[SectionType::Type as usize];
-    let (mut remaining, _) = check_magic_and_version(input)?;
-    loop {
-        remaining = match parse_section_header(remaining) {
-            Ok((r, section_header)) => {
-                if SECTION_TYPE_TO_ORDER[section_header.id as usize] < next_section_order {
-                    return Err(Error::new(r, ErrorKind::IsNot));
-                } else {
-                    if section_header.id != SectionType::Custom {
-                        next_section_order = SECTION_TYPE_TO_ORDER[section_header.id as usize] + 1;
+        loop {
+            remaining = match Self::parse_section_header(remaining) {
+                Ok((r, section_header)) => {
+                    if SECTION_TYPE_TO_ORDER[section_header.id as usize] < next_section_order {
+                        return Err(Error::new(r, ErrorKind::IsNot));
+                    } else {
+                        if section_header.id != SectionType::Custom {
+                            next_section_order =
+                                SECTION_TYPE_TO_ORDER[section_header.id as usize] + 1;
+                        }
+                        let (r, _) = self.parse_section_content(r, section_header, module)?;
+                        r
                     }
-                    let (r, _) = parse_section_content(r, section_header, module)?;
-                    r
                 }
-            }
-            Err(e) => {
-                if e.code == ErrorKind::Eof {
-                    return Ok((e.input, ()));
-                } else {
-                    return Err(e);
+                Err(e) => {
+                    if e.code == ErrorKind::Eof {
+                        return Ok((e.input, ()));
+                    } else {
+                        return Err(e);
+                    }
                 }
-            }
-        };
-    }
-}
-
-fn parse_type_section<'a>(
-    section_header: SectionHeader,
-    content: &'a [u8],
-    module: &mut WasmModule,
-) -> ParserResult<'a, ()> {
-    const TYPE_TAG: [u8; 1] = [0x60];
-    let (mut remaining, n) = take_unsigned_32(content)?;
-    println!("n = {}", n);
-    for i in 0..n {
-        let (r, _) = tag(TYPE_TAG)(remaining).finish()?;
-
-        remaining = r;
+            };
+        }
     }
 
-    Ok((remaining, ()))
+    fn parse_vector<'a, T>(&mut self, input: &'a [u8]) -> ParserResult<'a, WasmVector<T>> {
+        todo!()
+    }
+
+    fn parse_type_section<'a>(
+        &mut self,
+        section_header: SectionHeader,
+        content: &'a [u8],
+        module: &mut WasmModule,
+    ) -> ParserResult<'a, ()> {
+        let (mut remaining, vec_len) = Self::take_unsigned_32(content)?;
+        println!("n = {}", vec_len);
+
+        let mut type_section = TypeSection::new(section_header);
+
+        if let Some(ref mut alloc) = self.alloc {
+            let content = alloc
+                .construct_n::<FuncType>(vec_len as usize)
+                .map_err(|_| Error::new(remaining, ErrorKind::Fail))?;
+
+            type_section.init(vec_len, content);
+        } else {
+            return Err(Error::new(remaining, ErrorKind::Fail));
+        }
+        // parse functype
+        for i in 0..vec_len as usize {}
+
+        Ok((remaining, ()))
+    }
 }
 
 #[cfg(test)]
@@ -176,7 +207,7 @@ mod tests {
     #[kernel_test]
     fn test_parser() {
         let mut module = WasmModule::new();
-        let parser = WasmParser::new();
+        let mut parser = WasmParser::new();
         parser.parse(WASM_MODULE, &mut module).unwrap();
     }
 }
