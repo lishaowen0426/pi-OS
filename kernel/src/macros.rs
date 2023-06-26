@@ -9,7 +9,7 @@ macro_rules! type_enum_with_error {
         #[repr(u8)]
         $vis enum $name {
             $($variant = $dis ),*,
-            Undefined,
+            Undefined ,
         }
 
         impl Default for $name{
