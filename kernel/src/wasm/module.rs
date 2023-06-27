@@ -1,18 +1,24 @@
 use crate::{
     errno::{ErrorCode, EINVAL},
-    memory::heap::AllocBuffer,
+    memory::heap,
     type_enum, type_enum_with_error,
 };
 use core::{
     fmt,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
-use nom::error::ErrorKind;
+use nom::error::{Error, ErrorKind};
+use test_macros::SingleField;
 
 mod parser;
 
-trait Parseable {
-    fn parse(input: &[u8]) -> Self;
+type ParserResult<'a, O> = Result<(&'a [u8], O), Error<&'a [u8]>>;
+
+trait Parseable
+where
+    Self: Sized,
+{
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self>;
 }
 
 type_enum!(
@@ -34,6 +40,12 @@ type_enum!(
     ErrorKind,
     ErrorKind::IsNot
 );
+#[derive(Default)]
+#[repr(C)]
+struct SectionHeader {
+    id: SectionType,
+    size: U32,
+}
 
 type_enum!(
     enum NumType {
@@ -63,6 +75,7 @@ type_enum!(
     ErrorKind::IsNot
 );
 
+#[derive(Clone, Copy)]
 #[repr(u8)]
 enum ValType {
     Num(NumType),
@@ -77,10 +90,27 @@ impl Default for ValType {
     }
 }
 
+impl fmt::Display for ValType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Num(n) => write!(f, "{}", n),
+            Self::Vec(v) => write!(f, "{}", v),
+            Self::Ref(r) => write!(f, "{}", r),
+            _ => write!(f, "Unknown value type"),
+        }
+    }
+}
+
 #[derive(Default)]
 #[repr(C)]
 struct ResultType {
     values: WasmVector<ValType>,
+}
+
+impl fmt::Display for ResultType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.values)
+    }
 }
 
 #[derive(Default)]
@@ -90,28 +120,89 @@ struct FuncType {
     output: ResultType,
 }
 
+impl fmt::Display for FuncType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.input, self.output)
+    }
+}
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct Byte(u8);
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct U32(u32);
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct U64(u64);
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct S32(i32);
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct S64(i64);
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct I32(U32);
+
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct I64(U64);
+
 #[repr(C)]
 struct WasmVector<T> {
-    n: u32,
+    n: U32,
     elements: *mut T,
+}
+
+impl<T: fmt::Display> fmt::Display for WasmVector<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            let s = core::slice::from_raw_parts(self.elements as *const T, self.n.0 as usize);
+            for i in 0..s.len() - 1 {
+                write!(f, "{} ", s[i])?;
+            }
+            write!(f, "{}", s[s.len() - 1])
+        }
+    }
+}
+impl<T> fmt::Debug for WasmVector<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "len = {}", self.n);
+        let buffer = self.elements as *const u8;
+        unsafe {
+            for i in 0..self.n.0 {
+                write!(f, "{:#04x} ", buffer.offset(i as isize).read());
+                if i % 10 == 0 {
+                    writeln!(f, "");
+                }
+            }
+        }
+        writeln!(f, "")
+    }
 }
 
 impl<T> Default for WasmVector<T> {
     fn default() -> Self {
         Self {
-            n: 0u32,
+            n: 0u32.into(),
             elements: core::ptr::null_mut(),
         }
     }
 }
 
 impl<T> WasmVector<T> {
-    fn new(n: u32, elements: *mut T) -> Self {
+    fn new(n: U32, elements: *mut T) -> Self {
         Self { n, elements }
     }
 
-    fn init(&mut self, n: u32, elements: *mut T) -> Result<(), ErrorCode> {
-        if n != 0 || !elements.is_null() {
+    fn init(&mut self, n: U32, elements: *mut T) -> Result<(), ErrorCode> {
+        if n != 0u32.into() || !elements.is_null() {
             Err(EINVAL)
         } else {
             self.n = n;
@@ -134,17 +225,10 @@ impl<T> IndexMut<usize> for WasmVector<T> {
     }
 }
 
-#[derive(Default)]
-#[repr(C)]
-struct SectionHeader {
-    id: SectionType,
-    size: u32,
-}
-
 impl fmt::Display for SectionHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.id)?;
-        write!(f, "(size={:#010x})", self.size)
+        write!(f, "(size={})", self.size)
     }
 }
 
@@ -183,19 +267,32 @@ impl<T> WasmSection<T>
 where
     T: Default,
 {
-    fn new(header: SectionHeader) -> Self {
-        Self {
-            header,
-            cont: T::default(),
-        }
+    fn new(header: SectionHeader, cont: T) -> Self {
+        Self { header, cont }
     }
 }
 
 type TypeSection = WasmSection<WasmVector<FuncType>>;
 
+impl fmt::Display for TypeSection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.header)?;
+        write!(f, "{}", self.cont)
+    }
+}
+
 pub struct WasmModule {
-    buffer: Option<AllocBuffer>,
+    buffer: Option<heap::BumpBuffer>,
     type_section: Option<TypeSection>,
+}
+
+impl fmt::Display for WasmModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ref ts) = self.type_section {
+            write!(f, "{}", ts);
+        }
+        Ok(())
+    }
 }
 
 impl<'a> WasmModule {

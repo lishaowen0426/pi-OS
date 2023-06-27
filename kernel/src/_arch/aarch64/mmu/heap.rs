@@ -77,7 +77,6 @@ where
     }
 
     fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
-        println!("alloc {}, align = {}", layout.size(), layout.align());
         let offset = self.allocated.first_zero();
         let ptr: usize = self.data.as_ptr() as usize + offset * layout.size();
 
@@ -100,7 +99,6 @@ where
         Some(allocated)
     }
     fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
-        println!("dealloc {}", layout.size());
         let base = self.data.as_ptr() as usize;
 
         let diff = ptr as usize - base;
@@ -387,17 +385,13 @@ impl UnsafeHeapAllocator {
     }
 }
 
-pub struct AllocBuffer {
+pub struct BumpBuffer {
     start: usize,
+    next: usize,
     end: usize, // exclusive
 }
 
-pub struct AllocBufferIter {
-    next: usize,
-    end: usize,
-}
-
-impl Iterator for AllocBufferIter {
+impl Iterator for BumpBuffer {
     type Item = *mut u8;
     fn next(&mut self) -> Option<Self::Item> {
         if self.next >= self.end {
@@ -409,10 +403,7 @@ impl Iterator for AllocBufferIter {
     }
 }
 
-impl AllocBufferIter {
-    const fn new(start: usize, end: usize) -> Self {
-        Self { next: start, end }
-    }
+impl BumpBuffer {
     pub fn construct<T>(&mut self) -> Result<*mut T, ErrorCode> {
         let layout = Layout::new::<T>();
         let align_offset = (self.next as *mut u8).align_offset(layout.align());
@@ -450,20 +441,17 @@ impl AllocBufferIter {
     }
 }
 
-impl AllocBuffer {
+impl BumpBuffer {
     pub fn new(range: VaRange) -> Self {
         Self {
             start: range.start().value(),
+            next: range.start().value(),
             end: range.end().value(),
         }
     }
-
-    pub fn iter(&self) -> AllocBufferIter {
-        AllocBufferIter::new(self.start, self.end)
-    }
 }
 
-impl Drop for AllocBuffer {
+impl Drop for BumpBuffer {
     fn drop(&mut self) {
         MMU.get()
             .unwrap()
@@ -499,9 +487,9 @@ impl HeapAllocator {
         self.allocator.lock().dealloc(ptr, layout)
     }
 
-    pub fn alloc_buffer(&self, npage: usize) -> Result<AllocBuffer, ErrorCode> {
+    pub fn alloc_bump_buffer(&self, npage: usize) -> Result<BumpBuffer, ErrorCode> {
         let mapped = MMU.get().unwrap().kzalloc(npage, RWNORMAL, HIGHER_PAGE)?;
-        Ok(AllocBuffer::new(mapped.va))
+        Ok(BumpBuffer::new(mapped.va))
     }
 }
 
@@ -536,7 +524,6 @@ unsafe impl GlobalAlloc for Heap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::println;
     use test_macros::kernel_test;
     #[derive(Debug)]
     #[repr(C)]
@@ -553,22 +540,20 @@ mod tests {
     #[kernel_test]
     fn test_heap() {
         {
-            let buffer = HEAP_ALLOCATOR.get().unwrap().alloc_buffer(1).unwrap();
-            let mut iter = buffer.iter();
+            let mut buffer = HEAP_ALLOCATOR.get().unwrap().alloc_bump_buffer(1).unwrap();
             let mut i = 0;
             for i in 0..4096 / core::mem::size_of::<T>() {
-                iter.construct::<T>().unwrap();
+                buffer.construct::<T>().unwrap();
             }
-            assert!(iter.construct::<T>().is_err());
+            assert!(buffer.construct::<T>().is_err());
         }
         {
-            let buffer = HEAP_ALLOCATOR.get().unwrap().alloc_buffer(1).unwrap();
-            let mut iter = buffer.iter();
-            let arr = iter
+            let mut buffer = HEAP_ALLOCATOR.get().unwrap().alloc_bump_buffer(1).unwrap();
+            let arr = buffer
                 .construct_n::<T>(4096 / core::mem::size_of::<T>())
                 .unwrap();
 
-            assert!(iter.construct::<T>().is_err());
+            assert!(buffer.construct::<T>().is_err());
         }
     }
 }

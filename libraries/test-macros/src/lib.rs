@@ -39,7 +39,7 @@ fn add_doubly_linkable(item: proc_macro2::TokenStream) -> proc_macro2::TokenStre
     quote!(#item_struct)
 }
 
-fn _impl_double_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+fn _impl_doubly_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let item = syn::parse2::<ItemStruct>(tokens).unwrap();
     let mut found = false;
     for f in item.fields.iter() {
@@ -82,7 +82,7 @@ fn _impl_double_linkable(tokens: proc_macro2::TokenStream) -> proc_macro2::Token
 #[proc_macro_attribute]
 pub fn doubly_linkable(_: TokenStream, annotated_item: TokenStream) -> TokenStream {
     let ast = add_doubly_linkable(annotated_item.into());
-    let impl_token = _impl_double_linkable(ast.clone());
+    let impl_token = _impl_doubly_linkable(ast.clone());
     quote!(
         #ast
         #impl_token
@@ -94,7 +94,7 @@ pub fn doubly_linkable(_: TokenStream, annotated_item: TokenStream) -> TokenStre
 #[proc_macro_attribute]
 pub fn impl_doubly_linkable(_: TokenStream, annotated_item: TokenStream) -> TokenStream {
     let ast: proc_macro2::TokenStream = annotated_item.clone().into();
-    let impl_token = _impl_double_linkable(annotated_item.clone().into());
+    let impl_token = _impl_doubly_linkable(annotated_item.clone().into());
     quote!(
         #ast
         #impl_token
@@ -102,9 +102,41 @@ pub fn impl_doubly_linkable(_: TokenStream, annotated_item: TokenStream) -> Toke
     .into()
 }
 
-#[proc_macro_attribute]
-pub fn byte_enum(input: TokenStream, annotated_item: TokenStream) -> TokenStream {
-    TokenStream::new()
+fn _single_field_derive(item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let item_struct = syn::parse2::<ItemStruct>(item).unwrap();
+    if item_struct.fields.len() != 1 {
+        abort_call_site!("Not a single field struct");
+    }
+    let struct_name = item_struct.ident;
+
+    let (impl_generics, ty_generics, where_clause) = item_struct.generics.split_for_impl();
+    let ty = &item_struct.fields.iter().next().unwrap().ty;
+
+    quote!(
+        impl #impl_generics From<#ty> for #struct_name #ty_generics #where_clause{
+            fn from(value: #ty) -> Self{
+                Self(value)
+            }
+        }
+        impl #impl_generics Into<#ty> for #struct_name #ty_generics #where_clause{
+            fn into(self) -> #ty{
+                self.0
+            }
+        }
+
+        impl #impl_generics fmt::Display for #struct_name #ty_generics #where_clause{
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error>{
+                write!(f, "{}", self.0)
+            }
+        }
+
+
+    )
+}
+#[proc_macro_error]
+#[proc_macro_derive(SingleField)]
+pub fn single_field_derive(item: TokenStream) -> TokenStream {
+    _single_field_derive(item.into()).into()
 }
 
 #[cfg(test)]
@@ -112,13 +144,10 @@ mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
-    struct DoublyLink {}
-
     #[test]
-    fn test_doublylinkable() {
-        let t = add_doubly_linkable(quote!(
-            pub struct Test {}
+    fn test_single_field() {
+        _single_field_derive(quote!(
+            pub struct Test(u64);
         ));
-        impl_double_linkable(t.clone());
     }
 }
