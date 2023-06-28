@@ -10,6 +10,7 @@ use core::{
 use nom::error::{Error, ErrorKind};
 use test_macros::SingleField;
 
+mod instructions;
 mod parser;
 
 type ParserResult<'a, O> = Result<(&'a [u8], O), Error<&'a [u8]>>;
@@ -84,6 +85,25 @@ enum ValType {
     Undefined,
 }
 
+impl TryFrom<u8> for ValType {
+    type Error = ErrorKind;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if let Ok(n) = NumType::try_from(value) {
+            return Ok(Self::Num(n));
+        }
+
+        if let Ok(v) = VecType::try_from(value) {
+            return Ok(Self::Vec(v));
+        }
+
+        if let Ok(r) = RefType::try_from(value) {
+            return Ok(Self::Ref(r));
+        }
+
+        return Err(ErrorKind::IsNot);
+    }
+}
+
 impl Default for ValType {
     fn default() -> Self {
         Self::Undefined
@@ -101,6 +121,14 @@ impl fmt::Display for ValType {
     }
 }
 
+type_enum!(
+    enum MutType {
+        Const = 0x00,
+        Var = 0x01,
+    },
+    ErrorKind,
+    ErrorKind::IsNot
+);
 #[derive(Default)]
 #[repr(C)]
 struct ResultType {
@@ -148,11 +176,66 @@ struct S64(i64);
 
 #[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
 #[repr(transparent)]
-struct I32(U32);
+struct I32(S32);
 
 #[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
 #[repr(transparent)]
-struct I64(U64);
+struct I64(S64);
+
+// The type index in a block type
+// encoded as a positive signed integer
+#[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct S33(u32);
+
+#[repr(C)]
+struct Limits {
+    min: U32,
+    max: Option<U32>,
+}
+
+impl fmt::Display for Limits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(m) = self.max {
+            write!(f, "{{ {}, {} }}", self.min, m)
+        } else {
+            write!(f, "{{ {},  }}", self.min)
+        }
+    }
+}
+
+#[repr(C)]
+struct TableType {
+    lim: Limits,
+    et: RefType,
+}
+
+impl fmt::Display for TableType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.lim, self.et)
+    }
+}
+
+#[repr(C)]
+struct GlobalType {
+    t: ValType,
+    m: MutType,
+}
+
+impl fmt::Display for GlobalType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.m, self.t)
+    }
+}
+
+#[repr(C)]
+struct Expr {}
+
+#[repr(C)]
+struct Global {
+    gt: GlobalType,
+    e: Expr,
+}
 
 #[repr(C)]
 struct WasmVector<T> {
@@ -273,8 +356,10 @@ where
 }
 
 type TypeSection = WasmSection<WasmVector<FuncType>>;
+type FuncSection = WasmSection<WasmVector<U32>>;
+type TableSection = WasmSection<WasmVector<TableType>>;
 
-impl fmt::Display for TypeSection {
+impl<T: fmt::Display> fmt::Display for WasmSection<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.header)?;
         write!(f, "{}", self.cont)
@@ -284,12 +369,20 @@ impl fmt::Display for TypeSection {
 pub struct WasmModule {
     buffer: Option<heap::BumpBuffer>,
     type_section: Option<TypeSection>,
+    func_section: Option<FuncSection>,
+    table_section: Option<TableSection>,
 }
 
 impl fmt::Display for WasmModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref ts) = self.type_section {
-            write!(f, "{}", ts);
+        if let Some(ref s) = self.type_section {
+            writeln!(f, "{}", s)?;
+        }
+        if let Some(ref s) = self.func_section {
+            writeln!(f, "{}", s)?;
+        }
+        if let Some(ref s) = self.table_section {
+            writeln!(f, "{}", s)?;
         }
         Ok(())
     }
@@ -300,6 +393,8 @@ impl<'a> WasmModule {
         WasmModule {
             buffer: None,
             type_section: None,
+            func_section: None,
+            table_section: None,
         }
     }
 }

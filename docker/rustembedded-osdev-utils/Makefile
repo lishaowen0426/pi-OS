@@ -4,7 +4,7 @@
 
 # Reference followed: https://www.docker.com/blog/getting-started-with-docker-for-arm-on-linux
 
-TAG := 2021.12
+TAG := c
 
 default: build_local
 

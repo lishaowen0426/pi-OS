@@ -20,12 +20,12 @@ RUN set -ex;                                      \
     tempPkgs='                                    \
         automake                                  \
         bison                                     \
-        build-essential                           \
         flex                                      \
         git                                       \
         libtool                                   \
         ninja-build                               \
         pkg-config                                \
+        build-essential                           \
         wget                                      \
     ';                                            \
     apt-get update;                               \
@@ -39,9 +39,13 @@ RUN set -ex;                                      \
         libusb-1.0.0-dev                          \
         locales                                   \
         python3                                   \
+        grub-common                               \
+        xorriso                                   \
         ruby                                      \
         ruby-dev                                  \
         binutils                                  \
+        gcc                                       \
+        g++                                       \
     ;                                             \
     # GCC AArch64 tools
     if [ "$(uname -m)" = "aarch64" ]; then wget ${GCC_AARCH64}; else wget ${GCC_X86_64}; fi; \
@@ -78,7 +82,8 @@ RUN set -ex;                                      \
     apt-get purge -y --auto-remove $tempPkgs; \
     apt-get autoremove -q -y;                 \
     apt-get clean -q -y;                      \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*                \
+    apt-get install build-essential            
 
 # Locales
 RUN locale-gen en_US.UTF-8
