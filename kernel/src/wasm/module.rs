@@ -1,10 +1,13 @@
+extern crate alloc;
 use crate::{
     errno::{ErrorCode, EINVAL},
     memory::heap,
     type_enum, type_enum_with_error,
 };
+use alloc::vec::Vec;
 use core::{
     fmt,
+    iter::Iterator,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 use nom::error::{Error, ErrorKind};
@@ -137,7 +140,11 @@ struct ResultType {
 
 impl fmt::Display for ResultType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.values)
+        write!(f, "(")?;
+        for t in self.values.iter() {
+            write!(f, "{},", t)?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -212,7 +219,7 @@ struct TableType {
 
 impl fmt::Display for TableType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.lim, self.et)
+        write!(f, "Table{{lim: {}, et: {}}}", self.lim, self.et)
     }
 }
 
@@ -224,7 +231,98 @@ struct GlobalType {
 
 impl fmt::Display for GlobalType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.m, self.t)
+        write!(f, "global {} {}", self.m, self.t)
+    }
+}
+
+#[repr(C)]
+struct MemType {
+    lim: Limits,
+}
+
+impl fmt::Display for MemType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "mem {}", self.lim)
+    }
+}
+
+#[repr(C)]
+struct Name {
+    b: WasmVector<Byte>,
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            let s = core::slice::from_raw_parts(self.b.elements as *const u8, self.b.n.0 as usize);
+            write!(f, "{}", core::str::from_utf8_unchecked(s))
+        }
+    }
+}
+
+#[repr(C)]
+enum ImportDesc {
+    Func(U32),
+    Table(TableType),
+    Mem(MemType),
+    Global(GlobalType),
+}
+
+impl fmt::Display for ImportDesc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Func(ref idx) => write!(f, "func {}", idx.0),
+            Self::Table(ref t) => write!(f, "{}", t),
+            Self::Mem(ref m) => write!(f, "{}", m),
+            Self::Global(ref g) => write!(f, "{}", g),
+        }
+    }
+}
+
+#[repr(C)]
+struct Import {
+    module: Name,
+    nm: Name,
+    desc: ImportDesc,
+}
+
+impl fmt::Display for Import {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "module: {}, name: {}, desc: {}",
+            self.module, self.nm, self.desc
+        )
+    }
+}
+
+#[repr(C)]
+enum ExportDesc {
+    Func(U32),
+    Table(U32),
+    Mem(U32),
+    Global(U32),
+}
+
+impl fmt::Display for ExportDesc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Func(ref idx) => write!(f, "func {}", idx.0),
+            Self::Table(ref t) => write!(f, "table {}", t),
+            Self::Mem(ref m) => write!(f, "mem {}", m),
+            Self::Global(ref g) => write!(f, "global {}", g),
+        }
+    }
+}
+#[repr(C)]
+struct Export {
+    nm: Name,
+    desc: ExportDesc,
+}
+
+impl fmt::Display for Export {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "name: {}, desc: {},", self.nm, self.desc)
     }
 }
 
@@ -237,6 +335,23 @@ struct Global {
     e: Expr,
 }
 
+struct WasmVectorIter<'a, T> {
+    v: &'a WasmVector<T>,
+    next: usize,
+}
+
+impl<'a, T> Iterator for WasmVectorIter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.v.n.0 as usize {
+            None
+        } else {
+            self.next += 1;
+            Some(&self.v[self.next - 1])
+        }
+    }
+}
+
 #[repr(C)]
 struct WasmVector<T> {
     n: U32,
@@ -247,22 +362,22 @@ impl<T: fmt::Display> fmt::Display for WasmVector<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
             let s = core::slice::from_raw_parts(self.elements as *const T, self.n.0 as usize);
-            for i in 0..s.len() - 1 {
-                write!(f, "{} ", s[i])?;
+            for e in s.iter() {
+                writeln!(f, "    {} ", e)?;
             }
-            write!(f, "{}", s[s.len() - 1])
         }
+        Ok(())
     }
 }
 impl<T> fmt::Debug for WasmVector<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "len = {}", self.n);
+        writeln!(f, "len = {}", self.n)?;
         let buffer = self.elements as *const u8;
         unsafe {
             for i in 0..self.n.0 {
                 write!(f, "{:#04x} ", buffer.offset(i as isize).read());
                 if i % 10 == 0 {
-                    writeln!(f, "");
+                    writeln!(f, "")?;
                 }
             }
         }
@@ -293,6 +408,10 @@ impl<T> WasmVector<T> {
             Ok(())
         }
     }
+
+    fn iter(&self) -> WasmVectorIter<T> {
+        WasmVectorIter { v: self, next: 0 }
+    }
 }
 
 impl<T> Index<usize> for WasmVector<T> {
@@ -305,6 +424,18 @@ impl<T> Index<usize> for WasmVector<T> {
 impl<T> IndexMut<usize> for WasmVector<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         unsafe { self.elements.offset(index as isize).as_mut().unwrap() }
+    }
+}
+impl<T> Index<U32> for WasmVector<T> {
+    type Output = T;
+    fn index(&self, index: U32) -> &Self::Output {
+        unsafe { self.elements.offset(index.0 as isize).as_ref().unwrap() }
+    }
+}
+
+impl<T> IndexMut<U32> for WasmVector<T> {
+    fn index_mut(&mut self, index: U32) -> &mut Self::Output {
+        unsafe { self.elements.offset(index.0 as isize).as_mut().unwrap() }
     }
 }
 
@@ -358,6 +489,8 @@ where
 type TypeSection = WasmSection<WasmVector<FuncType>>;
 type FuncSection = WasmSection<WasmVector<U32>>;
 type TableSection = WasmSection<WasmVector<TableType>>;
+type ImportSection = WasmSection<WasmVector<Import>>;
+type ExportSection = WasmSection<WasmVector<Export>>;
 
 impl<T: fmt::Display> fmt::Display for WasmSection<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -366,11 +499,15 @@ impl<T: fmt::Display> fmt::Display for WasmSection<T> {
     }
 }
 
+struct GlobalStore {}
+
 pub struct WasmModule {
     buffer: Option<heap::BumpBuffer>,
     type_section: Option<TypeSection>,
     func_section: Option<FuncSection>,
     table_section: Option<TableSection>,
+    import_section: Option<ImportSection>,
+    export_section: Option<ExportSection>,
 }
 
 impl fmt::Display for WasmModule {
@@ -384,6 +521,12 @@ impl fmt::Display for WasmModule {
         if let Some(ref s) = self.table_section {
             writeln!(f, "{}", s)?;
         }
+        if let Some(ref s) = self.import_section {
+            writeln!(f, "{}", s)?;
+        }
+        if let Some(ref s) = self.export_section {
+            writeln!(f, "{}", s)?;
+        }
         Ok(())
     }
 }
@@ -395,6 +538,8 @@ impl<'a> WasmModule {
             type_section: None,
             func_section: None,
             table_section: None,
+            import_section: None,
+            export_section: None,
         }
     }
 }
@@ -411,6 +556,23 @@ mod tests {
     use super::*;
     use crate::println;
     use test_macros::kernel_test;
+
+    struct F {
+        b: [u8; 40],
+    }
+
+    impl Default for F {
+        fn default() -> Self {
+            Self { b: [1; 40] }
+        }
+    }
     #[kernel_test]
-    fn test_module() {}
+    fn test_vector() {
+        const LEN: usize = 50;
+        let mut vec = Vec::new();
+        for i in 0..LEN {
+            println!("i = {}", i);
+            vec.push(F::default());
+        }
+    }
 }

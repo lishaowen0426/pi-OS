@@ -94,6 +94,13 @@ fn take_unsigned(N: usize, input: &[u8]) -> ParserResult<'_, u64> {
         Ok((remaining, uN))
     }
 }
+
+impl Parseable for Byte {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, b) = take(1usize)(input).finish()?;
+        Ok((remaining, Byte(b[0])))
+    }
+}
 impl Parseable for U32 {
     fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
         take_unsigned(32usize, input).map(|(i, u)| (i, Self(u as u32)))
@@ -172,7 +179,7 @@ impl Parseable for GlobalType {
     }
 }
 
-impl<T: Parseable + fmt::Display> Parseable for WasmVector<T> {
+impl<T: Parseable> Parseable for WasmVector<T> {
     fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
         let (mut remaining, vec_len) = U32::parse(input, alloc)?;
         if let Some(a) = alloc.as_mut() {
@@ -292,6 +299,87 @@ impl Parseable for BlockType {
     }
 }
 
+impl Parseable for MemType {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, lim) = Limits::parse(input, alloc)?;
+        Ok((remaining, Self { lim }))
+    }
+}
+
+impl Parseable for ImportDesc {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, tag) = take(1usize)(input).finish()?;
+        match tag[0] {
+            0x00u8 => {
+                let (remaining, type_idx) = U32::parse(remaining, alloc)?;
+                Ok((remaining, Self::Func(type_idx)))
+            }
+            0x01u8 => {
+                let (remaining, tt) = TableType::parse(remaining, alloc)?;
+                Ok((remaining, Self::Table(tt)))
+            }
+            0x02u8 => {
+                let (remaining, mt) = MemType::parse(remaining, alloc)?;
+                Ok((remaining, Self::Mem(mt)))
+            }
+            0x03u8 => {
+                let (remaining, gt) = GlobalType::parse(remaining, alloc)?;
+                Ok((remaining, Self::Global(gt)))
+            }
+            _ => Err(Error::new(remaining, ErrorKind::IsNot)),
+        }
+    }
+}
+
+impl Parseable for ExportDesc {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, tag) = take(1usize)(input).finish()?;
+        match tag[0] {
+            0x00u8 => {
+                let (remaining, type_idx) = U32::parse(remaining, alloc)?;
+                Ok((remaining, Self::Func(type_idx)))
+            }
+            0x01u8 => {
+                let (remaining, table_idx) = U32::parse(remaining, alloc)?;
+                Ok((remaining, Self::Table(table_idx)))
+            }
+            0x02u8 => {
+                let (remaining, mem_idx) = U32::parse(remaining, alloc)?;
+                Ok((remaining, Self::Mem(mem_idx)))
+            }
+            0x03u8 => {
+                let (remaining, global_idx) = U32::parse(remaining, alloc)?;
+                Ok((remaining, Self::Global(global_idx)))
+            }
+            _ => Err(Error::new(remaining, ErrorKind::IsNot)),
+        }
+    }
+}
+
+impl Parseable for Export {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, nm) = Name::parse(input, alloc)?;
+        let (remaining, desc) = ExportDesc::parse(remaining, alloc)?;
+        Ok((remaining, Export { nm, desc }))
+    }
+}
+
+impl Parseable for Name {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, b) = WasmVector::<Byte>::parse(input, alloc)?;
+        Ok((remaining, Name { b }))
+    }
+}
+
+impl Parseable for Import {
+    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+        let (remaining, module) = Name::parse(input, alloc)?;
+        let (remaining, nm) = Name::parse(remaining, alloc)?;
+        let (remaining, desc) = ImportDesc::parse(remaining, alloc)?;
+        Ok((remaining, Import { module, nm, desc }))
+    }
+}
+
 pub struct WasmParser {
     alloc: Option<heap::BumpBuffer>,
 }
@@ -330,6 +418,12 @@ impl WasmParser {
             }
             SectionType::Table => {
                 self.parse_table_section(section_header, content, module)?;
+            }
+            SectionType::Import => {
+                self.parse_import_section(section_header, content, module)?;
+            }
+            SectionType::Export => {
+                self.parse_export_section(section_header, content, module)?;
             }
             _ => {}
         };
@@ -423,6 +517,36 @@ impl WasmParser {
             Ok((remaining, ()))
         }
     }
+    fn parse_import_section<'a>(
+        &mut self,
+        section_header: SectionHeader,
+        content: &'a [u8],
+        module: &mut WasmModule,
+    ) -> ParserResult<'a, ()> {
+        let (remaining, imports) = WasmVector::<Import>::parse(content, &mut self.alloc)?;
+        let import_sec = ImportSection::new(section_header, imports);
+        if module.import_section.is_some() {
+            Err(Error::new(remaining, ErrorKind::Fail))
+        } else {
+            module.import_section = Some(import_sec);
+            Ok((remaining, ()))
+        }
+    }
+    fn parse_export_section<'a>(
+        &mut self,
+        section_header: SectionHeader,
+        content: &'a [u8],
+        module: &mut WasmModule,
+    ) -> ParserResult<'a, ()> {
+        let (remaining, exports) = WasmVector::<Export>::parse(content, &mut self.alloc)?;
+        let export_sec = ExportSection::new(section_header, exports);
+        if module.export_section.is_some() {
+            Err(Error::new(remaining, ErrorKind::Fail))
+        } else {
+            module.export_section = Some(export_sec);
+            Ok((remaining, ()))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -430,7 +554,7 @@ impl WasmParser {
 mod tests {
     use super::*;
     use test_macros::kernel_test;
-    const WASM_MODULE: &[u8; 230] = include_bytes!("../module.wasm");
+    const WASM_MODULE: &[u8; 360] = include_bytes!("../module.wasm");
     #[kernel_test]
     fn test_parser() {
         let mut module = WasmModule::new();
@@ -438,8 +562,9 @@ mod tests {
         parser.parse(WASM_MODULE, &mut module).unwrap();
         println!("{}", module);
 
-        let signed = [0xC0, 0xBB, 0x78] as [u8; 3];
-        let (_, signed) = take_signed(32, &signed).unwrap();
-        println!("{}", signed);
+        let i: i8 = i8::MIN;
+        let ii: u8 = 255;
+        println!("{:#010b}", i);
+        println!("{}", ii as i8);
     }
 }

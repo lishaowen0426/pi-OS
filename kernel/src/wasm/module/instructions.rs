@@ -1,4 +1,17 @@
+extern crate alloc;
 use super::*;
+use alloc::boxed::Box;
+
+pub type OpCode = u8;
+
+// How to guard this?
+#[repr(transparent)]
+struct Stack {
+    s: *mut u8,
+}
+
+
+type InstFn = fn(stack: &Stack) -> ();
 
 trait WasmInst {
     type Output;

@@ -183,14 +183,17 @@ impl MemoryManagementUnit {
         mt: &MemoryType,
         region: &MemoryRegion,
     ) -> Result<Mapped, ErrorCode> {
+        println!("before page alloc");
         let va = allocator::PAGE_ALLOCATOR
             .get()
             .unwrap()
             .allocate_n(npage, region)?;
+        println!("before frame alloc");
         let pa = allocator::FRAME_ALLOCATOR
             .get()
             .unwrap()
             .allocate_n(npage)?;
+        println!("before map");
         va.start()
             .iter_4K_for(npage)
             .unwrap()
@@ -198,10 +201,11 @@ impl MemoryManagementUnit {
             .for_each(|(va, pa)| {
                 self.map(va, pa, mt, BLOCK_4K).unwrap();
             });
-
+        println!("before clear_memory_range {}", va);
         unsafe {
             clear_memory_range(va.start().value(), va.end().value());
         }
+        println!("after clear_memory_range {}", va);
         Ok(Mapped { va, pa })
     }
 

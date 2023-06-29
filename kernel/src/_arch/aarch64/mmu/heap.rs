@@ -77,6 +77,7 @@ where
     }
 
     fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+        println!("alloc {:?}", layout);
         let offset = self.allocated.first_zero();
         let ptr: usize = self.data.as_ptr() as usize + offset * layout.size();
 
@@ -96,6 +97,7 @@ where
 
         self.allocated.set_bit(offset, 1);
         self.count = self.count + 1;
+        println!("{:?} success", layout);
         Some(allocated)
     }
     fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
@@ -178,6 +180,7 @@ impl SizeClassAllocator {
         Ok(())
     }
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+        println!("class {}, layout {:?}", self.size_class, layout);
         for l in self.slabs.iter() {
             let obj: &mut ObjectPage4K = l.resolve_mut();
             if let Some(p) = obj.alloc(layout) {
@@ -190,6 +193,7 @@ impl SizeClassAllocator {
                 self.full_slabs.push_front(l);
             }
         }
+        println!("class {}, layout {:?}, fail", self.size_class, layout);
         None
     }
 
@@ -249,10 +253,12 @@ impl HeapBackend {
     }
 
     fn request_4K_from_system(&mut self) -> Result<(), ErrorCode> {
+        println!("before mmu");
         let mapped = super::MMU
             .get()
             .unwrap()
             .kzalloc(1, RWNORMAL, HIGHER_PAGE)?;
+        println!("mapped {}", mapped);
 
         self.insert(mapped.va)
     }
@@ -261,7 +267,9 @@ impl HeapBackend {
         if let Some(l) = self.free_4K.pop_front() {
             Ok(l.ptr())
         } else {
+            println!("before request");
             self.request_4K_from_system()?;
+            println!("after request");
             if let Some(vv) = self.free_4K.pop_front() {
                 Ok(vv.ptr())
             } else {
@@ -366,6 +374,7 @@ impl UnsafeHeapAllocator {
         if let Some(ptr) = self.frontend.alloc(layout) {
             Some(ptr)
         } else {
+            println!("front end need to refill, layout {:?}", layout);
             let start = self.backend.allocate_4K_free().ok()?;
             self.frontend.refill(start, layout).ok()?;
 
