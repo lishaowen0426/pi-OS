@@ -568,10 +568,9 @@ mod tests {
     }
     #[kernel_test]
     fn test_vector() {
-        const LEN: usize = 50;
+        const LEN: usize = 100;
         let mut vec = Vec::new();
         for i in 0..LEN {
-            println!("i = {}", i);
             vec.push(F::default());
         }
     }

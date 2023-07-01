@@ -183,17 +183,14 @@ impl MemoryManagementUnit {
         mt: &MemoryType,
         region: &MemoryRegion,
     ) -> Result<Mapped, ErrorCode> {
-        println!("before page alloc");
         let va = allocator::PAGE_ALLOCATOR
             .get()
             .unwrap()
             .allocate_n(npage, region)?;
-        println!("before frame alloc");
         let pa = allocator::FRAME_ALLOCATOR
             .get()
             .unwrap()
             .allocate_n(npage)?;
-        println!("before map");
         va.start()
             .iter_4K_for(npage)
             .unwrap()
@@ -201,11 +198,9 @@ impl MemoryManagementUnit {
             .for_each(|(va, pa)| {
                 self.map(va, pa, mt, BLOCK_4K).unwrap();
             });
-        println!("before clear_memory_range {}", va);
         unsafe {
             clear_memory_range(va.start().value(), va.end().value());
         }
-        println!("after clear_memory_range {}", va);
         Ok(Mapped { va, pa })
     }
 
@@ -214,11 +209,24 @@ impl MemoryManagementUnit {
     }
 
     pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {
-        if va.is_lower() {
+        let pa = if va.is_lower() {
             self.lower_l1.lock().unmap(va)
         } else {
             self.higher_l1.lock().unmap(va)
-        }
+        }?;
+
+        let va = if pa.is_4K() {
+            va.to_4K_range()
+        } else if pa.is_2M() {
+            va.to_2M_range()
+        } else {
+            va.to_1G_range()
+        };
+
+        allocator::PAGE_ALLOCATOR.get().unwrap().free_range(va);
+        allocator::FRAME_ALLOCATOR.get().unwrap().free_range(pa);
+
+        Ok(())
     }
 }
 

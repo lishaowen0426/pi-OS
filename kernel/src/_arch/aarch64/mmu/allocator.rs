@@ -20,7 +20,7 @@ const LEN_4K: usize = 0x1000;
 const LEN_2M: usize = 0x200000;
 
 #[derive(Debug)]
-struct AddressRangeNode<T> {
+pub struct AddressRangeNode<T> {
     link: RBTreeLink,
     range: T,
 }

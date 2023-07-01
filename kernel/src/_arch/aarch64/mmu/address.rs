@@ -618,6 +618,9 @@ impl PhysicalAddress {
     pub fn to_2M_range(&self) -> PaRange {
         PaRange::new(*self, *self + PhysicalAddress::_2M)
     }
+    pub fn to_1G_range(&self) -> PaRange {
+        PaRange::new(*self, *self + PhysicalAddress::_1G)
+    }
     pub fn to_bytes_range(&self, nbytes: usize) -> PaRange {
         PaRange::new(*self, *self + PhysicalAddress::from(nbytes))
     }
@@ -732,6 +735,9 @@ impl VirtualAddress {
     }
     pub fn to_2M_range(&self) -> VaRange {
         VaRange::new(*self, *self + VirtualAddress::_2M)
+    }
+    pub fn to_1G_range(&self) -> VaRange {
+        VaRange::new(*self, *self + VirtualAddress::_1G)
     }
     pub fn to_bytes_range(&self, nbytes: usize) -> VaRange {
         VaRange::new(*self, *self + VirtualAddress::from(nbytes))

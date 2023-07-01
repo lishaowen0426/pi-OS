@@ -80,7 +80,7 @@ impl<L: TranslationTableLevel> UnsafeTranslationTable<L> {
 }
 
 impl UnsafeTranslationTable<Level1> {
-    pub fn unmap(&self, va: VirtualAddress) -> Result<(), ErrorCode> {
+    pub fn unmap(&self, va: VirtualAddress) -> Result<PaRange, ErrorCode> {
         let mut l1_entry = self[va.level1()].get();
 
         match l1_entry {
@@ -96,15 +96,27 @@ impl UnsafeTranslationTable<Level1> {
                         );
                         let l3_entry = l3_table[va.level3()].get();
                         match l3_entry {
-                            Descriptor::PageEntry(_) => l3_table.set_invalid(va.level3()),
+                            Descriptor::PageEntry(_) => {
+                                l3_table.set_invalid(va.level3());
+                                let pa = l3_entry.get_address().ok_or(EUNMAP)?;
+                                Ok(pa.to_4K_range())
+                            }
                             _ => Err(EUNMAP),
                         }
                     }
-                    Descriptor::L2BlockEntry(_) => l2_table.set_invalid(va.level2()),
+                    Descriptor::L2BlockEntry(_) => {
+                        l2_table.set_invalid(va.level2());
+                        let pa = l2_entry.get_address().ok_or(EUNMAP)?;
+                        Ok(pa.to_2M_range())
+                    }
                     _ => Err(EUNMAP),
                 }
             }
-            Descriptor::L1BlockEntry(_) => self.set_invalid(va.level1()),
+            Descriptor::L1BlockEntry(_) => {
+                self.set_invalid(va.level1());
+                let pa = l1_entry.get_address().ok_or(EUNMAP)?;
+                Ok(pa.to_1G_range())
+            }
             _ => Err(EUNMAP),
         }
     }
