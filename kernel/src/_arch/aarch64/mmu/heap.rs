@@ -163,7 +163,7 @@ struct HeapBackend {
     allocated_big_objects: [DoublyLinkedList<Span>; 4],
 }
 struct HeapFrontend {
-    sc_allocator: [SizeClassAllocator; 10],
+    sc_allocator: [Spinlock<SizeClassAllocator>; 10],
 }
 
 type_enum!(
@@ -255,7 +255,7 @@ impl SizeClassAllocator {
 }
 
 struct UnsafeHeapAllocator {
-    backend: HeapBackend,
+    backend: Spinlock<HeapBackend>,
     frontend: HeapFrontend,
 }
 
@@ -299,17 +299,29 @@ impl HeapBackend {
             allocated_big_objects: [DoublyLinkedList::new(); 4],
         }
     }
-    fn insert(&mut self, va: VaRange) -> Result<(), ErrorCode> {
-        if va.is_4K() {
-            let l = Link::some(va.start().value());
-            self.free_4K.push_front(l);
-            Ok(())
-        } else if va.is_2M() {
-            let l = Link::some(va.start().value());
-            self.free_2M.push_front(l);
-            Ok(())
-        } else {
+
+    fn insert_4K(&mut self, va: VaRange) -> Result<(), ErrorCode> {
+        if !va.is_4K_multiple() {
             Err(EPARAM)
+        } else {
+            let mut va_copy = va;
+            while let Some(v) = va_copy.pop_4K_front() {
+                let l = Link::some(v.value());
+                self.free_4K.push_front(l);
+            }
+            Ok(())
+        }
+    }
+    fn insert_2M(&mut self, va: VaRange) -> Result<(), ErrorCode> {
+        if !va.is_2M_multiple() {
+            Err(EPARAM)
+        } else {
+            let mut va_copy = va;
+            while let Some(v) = va_copy.pop_2M_front() {
+                let l = Link::some(v.value());
+                self.free_2M.push_front(l);
+            }
+            Ok(())
         }
     }
 
@@ -319,7 +331,7 @@ impl HeapBackend {
             .unwrap()
             .kzalloc(1, RWNORMAL, HIGHER_PAGE)?;
 
-        self.insert(mapped.va)
+        self.insert_4K(mapped.va)
     }
 
     pub fn allocate_4K_free(&mut self) -> Option<usize> {
@@ -360,6 +372,7 @@ impl HeapBackend {
         } else if let Some(l) = self.free_big_objects[sc].pop_front() {
             let span = l.resolve();
             self.allocated_big_objects[sc as usize].push_back(l);
+
             Some(span.start.value() as *mut u8)
         } else {
             None
@@ -371,9 +384,11 @@ impl HeapBackend {
             Err(EINVAL)
         } else {
             let mut link = Link::<Span>::none();
+            let layout_npages = sc.to_npage();
             for l in self.allocated_big_objects[sc as usize].iter() {
                 let span = l.resolve();
-                if span.start.value() == ptr as usize && span.num_pages == layout.size() / 4096 {
+
+                if span.start.value() == ptr as usize && span.num_pages == layout_npages {
                     link = l;
                     break;
                 }
@@ -422,78 +437,121 @@ impl HeapFrontend {
     pub const fn new() -> Self {
         Self {
             sc_allocator: [
-                SizeClassAllocator::new(Log2SizeClass::SZ_8),
-                SizeClassAllocator::new(Log2SizeClass::SZ_16),
-                SizeClassAllocator::new(Log2SizeClass::SZ_32),
-                SizeClassAllocator::new(Log2SizeClass::SZ_64),
-                SizeClassAllocator::new(Log2SizeClass::SZ_128),
-                SizeClassAllocator::new(Log2SizeClass::SZ_256),
-                SizeClassAllocator::new(Log2SizeClass::SZ_512),
-                SizeClassAllocator::new(Log2SizeClass::SZ_1024),
-                SizeClassAllocator::new(Log2SizeClass::SZ_2048),
-                SizeClassAllocator::new(Log2SizeClass::SZ_LARGE),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_8)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_16)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_32)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_64)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_128)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_256)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_512)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_1024)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_2048)),
+                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_LARGE)),
             ],
         }
     }
 
-    pub fn refill(&mut self, start: usize, layout: Layout) -> Result<(), ErrorCode> {
+    pub fn refill(&self, start: usize, layout: Layout) -> Result<(), ErrorCode> {
         let sc = Self::pick_size_class(layout.size());
         println!("layout {:?}, sc = {}", layout, sc);
         if sc == Log2SizeClass::Undefined {
             todo!()
         }
-        self.sc_allocator[sc as usize - 3].refill(start)
+        self.sc_allocator[sc as usize - 3].lock().refill(start)
     }
 
-    pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
+    pub fn alloc(&self, layout: Layout) -> Option<*mut u8> {
         let sz = Self::pick_size_class(layout.size()) as usize;
         if (sz - 3) >= self.sc_allocator.len() {
             return None;
         }
-        self.sc_allocator[sz - 3].alloc(layout)
+        self.sc_allocator[sz - 3].lock().alloc(layout)
     }
-    fn dealloc(
-        &mut self,
-        ptr: *mut u8,
-        layout: Layout,
-    ) -> Result<Option<VirtualAddress>, ErrorCode> {
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) -> Result<Option<VirtualAddress>, ErrorCode> {
         let sz = Self::pick_size_class(layout.size()) as usize;
         if (sz - 3) >= self.sc_allocator.len() {
             return Err(ESUPPORTED);
         }
-        Ok(self.sc_allocator[sz - 3].dealloc(ptr, layout))
+        Ok(self.sc_allocator[sz - 3].lock().dealloc(ptr, layout))
     }
 }
 
 impl UnsafeHeapAllocator {
     fn new() -> Self {
         Self {
-            backend: HeapBackend::new(),
+            backend: Spinlock::new(HeapBackend::new()),
             frontend: HeapFrontend::new(),
         }
     }
 
-    fn init(&mut self, va: VaRange) -> Result<(), ErrorCode> {
+    fn init(&self, va: VaRange) -> Result<(), ErrorCode> {
         let mut va_copy = va;
-        while let Some(v) = va_copy.pop_4K_front() {
-            self.backend
-                .insert(VaRange::new(v, v + VirtualAddress::_4K))?;
-        }
-        Ok(())
+        self.backend.lock().insert_4K(va)
     }
 
-    fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
-        self.frontend.alloc(layout)
+    fn alloc(&self, layout: Layout) -> Option<*mut u8> {
+        if layout.size() >= HeapFrontend::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE {
+            if let Some(p) = self.backend.lock().alloc_big(layout) {
+                return Some(p);
+            }
+
+            let npages = HeapBackend::pick_big_object_size(layout.size()).to_npage();
+
+            let mapped = super::MMU
+                .get()
+                .unwrap()
+                .kzalloc(npages, RWNORMAL, HIGHER_PAGE)
+                .unwrap();
+
+            self.backend.lock().refill_big(mapped).unwrap();
+            self.backend.lock().alloc_big(layout)
+        } else {
+            if let Some(p) = self.frontend.alloc(layout) {
+                return Some(p);
+            }
+
+            let refilled = if let Some(p) = self.backend.lock().allocate_4K_free() {
+                self.frontend.refill(p, layout).unwrap();
+                true
+            } else {
+                false
+            };
+            if !refilled {
+                if layout.size() == ADDRESS_RANGE_NODE_SIZE {
+                    todo!()
+                }
+
+                let mapped = super::MMU
+                    .get()
+                    .unwrap()
+                    .kzalloc(10, RWNORMAL, HIGHER_PAGE)
+                    .unwrap();
+
+                self.backend.lock().insert_4K(mapped.va).unwrap();
+                let p = self.backend.lock().allocate_4K_free().unwrap();
+
+                self.frontend.refill(p, layout).unwrap();
+            }
+            self.frontend.alloc(layout)
+        }
     }
-    fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
-        if let Some(v) = self.frontend.dealloc(ptr, layout).unwrap() {
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
+        if layout.size() >= HeapFrontend::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE {
+            return self.backend.lock().dealloc_big(ptr, layout);
+        }
+
+        let v = self.frontend.dealloc(ptr, layout)?;
+
+        if let Some(va) = v {
             // first try to return to the backend
             // it its full, let MMU unmap it.
             self.backend
-                .insert(VaRange::new(v, v + VirtualAddress::_4K))
-                .or_else(|_| MMU.get().unwrap().unmap(v))
+                .lock()
+                .insert_4K(VaRange::new(va, va + VirtualAddress::_4K))
+                .or_else(|_| MMU.get().unwrap().unmap(va))
                 .unwrap();
         }
+        Ok(())
     }
 }
 
@@ -573,96 +631,30 @@ impl Drop for BumpBuffer {
 }
 
 pub struct HeapAllocator {
-    allocator: SpinMutex<UnsafeHeapAllocator>,
+    allocator: UnsafeHeapAllocator,
 }
 
 impl HeapAllocator {
     fn new() -> Self {
         Self {
-            allocator: SpinMutex::new(UnsafeHeapAllocator::new()),
+            allocator: UnsafeHeapAllocator::new(),
         }
     }
 
     fn init(&self, va: VaRange) -> Result<(), ErrorCode> {
-        self.allocator.lock().init(va)
+        self.allocator.init(va)
     }
 
     fn alloc(&self, layout: Layout) -> *mut u8 {
-        if layout.size() >= HeapFrontend::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE {
-            println!("big {:?}", layout);
-            if let Some(p) = self.allocator.lock().backend.alloc_big(layout) {
-                return p;
-            }
-
-            let npages = HeapBackend::pick_big_object_size(layout.size()).to_npage();
-            if let Ok(mapped) = super::MMU
-                .get()
-                .unwrap()
-                .kzalloc(npages, RWNORMAL, HIGHER_PAGE)
-            {
-                println!("1111");
-                if self.allocator.lock().backend.refill_big(mapped).is_err() {
-                    return core::ptr::null::<u8>() as *mut u8;
-                }
-
-                println!("2222");
-                if let Some(p) = self.allocator.lock().backend.alloc_big(layout) {
-                    return p;
-                } else {
-                    return core::ptr::null::<u8>() as *mut u8;
-                }
-            } else {
-                return core::ptr::null::<u8>() as *mut u8;
-            };
-        }
-
-        if let Some(ptr) = self.allocator.lock().alloc(layout) {
-            return ptr;
-        }
-
-        let mut free_4k_page = if let Some(p) = self.allocator.lock().backend.allocate_4K_free() {
-            p
-        } else {
-            0
-        };
-        if free_4k_page == 0 {
-            if layout.size() == allocator::ADDRESS_RANGE_NODE_SIZE {
-                // since in kzalloc, page/frame_allocator will call Box<AddressRangeNode<*aRange>>
-                // this requires special handl
-                todo!()
-            }
-
-            free_4k_page =
-                if let Ok(mapped) = super::MMU.get().unwrap().kzalloc(1, RWNORMAL, HIGHER_PAGE) {
-                    mapped.va.start().value()
-                } else {
-                    0
-                };
-        }
-
-        if free_4k_page == 0 {
-            return core::ptr::null::<u8>() as *mut u8;
-        }
-
-        if self
-            .allocator
-            .lock()
-            .frontend
-            .refill(free_4k_page, layout)
-            .is_err()
-        {
-            return core::ptr::null::<u8>() as *mut u8;
-        }
-
-        if let Some(p) = self.allocator.lock().frontend.alloc(layout) {
+        if let Some(p) = self.allocator.alloc(layout) {
             p
         } else {
             core::ptr::null::<u8>() as *mut u8
         }
     }
 
-    fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.allocator.lock().dealloc(ptr, layout)
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
+        self.allocator.dealloc(ptr, layout)
     }
 
     pub fn alloc_bump_buffer(&self, npage: usize) -> Result<BumpBuffer, ErrorCode> {
@@ -695,7 +687,7 @@ unsafe impl GlobalAlloc for Heap {
         HEAP_ALLOCATOR.get().unwrap().alloc(layout)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        HEAP_ALLOCATOR.get().unwrap().dealloc(ptr, layout)
+        HEAP_ALLOCATOR.get().unwrap().dealloc(ptr, layout).unwrap();
     }
 }
 
