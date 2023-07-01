@@ -43,6 +43,8 @@ where
     }
 }
 
+pub const ADDRESS_RANGE_NODE_SIZE: usize = core::mem::size_of::<AddressRangeNode<VaRange>>();
+
 intrusive_adapter!(AddressRangeAdaptor<T> = Box<AddressRangeNode<T>> : AddressRangeNode<T> {link:RBTreeLink} where T:AddressRange+Clone);
 impl<'a, T> KeyAdapter<'a> for AddressRangeAdaptor<T>
 where

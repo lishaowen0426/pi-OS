@@ -10,6 +10,7 @@ use core::{
     fmt,
     iter::Iterator,
     marker::PhantomData,
+    num,
     ops::{Deref, Drop},
 };
 
@@ -126,9 +127,40 @@ static_vector!(Free4KVec, VaRange, BACKEND_FREE_4K);
 static_vector!(Free2MVec, VaRange, BACKEND_FREE_2M);
 static_vector!(ObjectPageVec, VaRange, OBJECT_PAGE_PER_SIZE_CLASS);
 
+#[impl_doubly_linkable]
+#[derive(Copy, Clone)]
+#[repr(C)]
+struct Span {
+    start: VirtualAddress,
+    num_pages: usize,
+    doubly_link: DoublyLink<Self>,
+    padding: [u8; allocator::ADDRESS_RANGE_NODE_SIZE
+        - core::mem::size_of::<VirtualAddress>()
+        - core::mem::size_of::<usize>()
+        - core::mem::size_of::<DoublyLink<Self>>()],
+}
+
+impl Span {
+    fn new(start: VirtualAddress, num_pages: usize) -> Self {
+        Self {
+            start,
+            num_pages,
+            doubly_link: Default::default(),
+            padding: [0; allocator::ADDRESS_RANGE_NODE_SIZE
+                - core::mem::size_of::<VirtualAddress>()
+                - core::mem::size_of::<usize>()
+                - core::mem::size_of::<DoublyLink<Self>>()],
+        }
+    }
+}
+
+const FREE_BIG_OBJECT_LIST_LENGTH_LIMIT: usize = 16;
+// big_objects are pages of 4kb, 8kb, 32kb, 256kb
 struct HeapBackend {
     free_4K: DoublyLinkedList<ObjectPage4K>,
     free_2M: DoublyLinkedList<ObjectPage2M>,
+    free_big_objects: [DoublyLinkedList<Span>; 4],
+    allocated_big_objects: [DoublyLinkedList<Span>; 4],
 }
 struct HeapFrontend {
     sc_allocator: [SizeClassAllocator; 10],
@@ -227,11 +259,44 @@ struct UnsafeHeapAllocator {
     frontend: HeapFrontend,
 }
 
+type_enum!(
+    enum BigObjectSizeClass {
+        SZ_4K = 0,
+        SZ_8K = 1,
+        SZ_32K = 2,
+        SZ_256K = 3,
+    }
+);
+
+impl BigObjectSizeClass {
+    fn to_npage(&self) -> usize {
+        match *self {
+            Self::SZ_4K => 1,
+            Self::SZ_8K => 2,
+            Self::SZ_32K => 4,
+            Self::SZ_256K => 64,
+            _ => 0,
+        }
+    }
+}
+
 impl HeapBackend {
+    fn pick_big_object_size(sz: usize) -> BigObjectSizeClass {
+        match sz {
+            0..4097 => BigObjectSizeClass::SZ_4K,
+            4097..8193 => BigObjectSizeClass::SZ_8K,
+            8193..16385 => BigObjectSizeClass::SZ_32K,
+            16385..262145 => BigObjectSizeClass::SZ_256K,
+            _ => BigObjectSizeClass::Undefined,
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             free_4K: DoublyLinkedList::new(),
             free_2M: DoublyLinkedList::new(),
+            free_big_objects: [DoublyLinkedList::new(); 4],
+            allocated_big_objects: [DoublyLinkedList::new(); 4],
         }
     }
     fn insert(&mut self, va: VaRange) -> Result<(), ErrorCode> {
@@ -260,26 +325,86 @@ impl HeapBackend {
     pub fn allocate_4K_free(&mut self) -> Option<usize> {
         self.free_4K.pop_front().map(|l| l.ptr())
     }
+
+    fn refill_big(&mut self, mapped: Mapped) -> Result<(), ErrorCode> {
+        if !mapped.va.is_4K_multiple() {
+            return Err(EALIGN);
+        }
+
+        let sc = match mapped.va.size_in_bytes() / 4096 {
+            1 => BigObjectSizeClass::SZ_4K,
+            2 => BigObjectSizeClass::SZ_8K,
+            4 => BigObjectSizeClass::SZ_32K,
+            64 => BigObjectSizeClass::SZ_256K,
+            _ => BigObjectSizeClass::Undefined,
+        } as usize;
+
+        if sc >= self.free_big_objects.len() {
+            Err(EINVAL)
+        } else {
+            let span = Box::new(Span::new(
+                mapped.va.start(),
+                mapped.va.size_in_bytes() / 4096,
+            ));
+            let span = Box::leak(span) as *mut Span;
+            let link = Link::<Span>::some(span as usize);
+            self.free_big_objects[sc].push_front(link);
+            Ok(())
+        }
+    }
+
+    fn alloc_big(&mut self, layout: Layout) -> Option<*mut u8> {
+        let sc = Self::pick_big_object_size(layout.size()) as usize;
+        if sc >= self.free_big_objects.len() {
+            None
+        } else if let Some(l) = self.free_big_objects[sc].pop_front() {
+            let span = l.resolve();
+            self.allocated_big_objects[sc as usize].push_back(l);
+            Some(span.start.value() as *mut u8)
+        } else {
+            None
+        }
+    }
+    fn dealloc_big(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), ErrorCode> {
+        let sc = Self::pick_big_object_size(layout.size());
+        if sc as usize >= self.allocated_big_objects.len() {
+            Err(EINVAL)
+        } else {
+            let mut link = Link::<Span>::none();
+            for l in self.allocated_big_objects[sc as usize].iter() {
+                let span = l.resolve();
+                if span.start.value() == ptr as usize && span.num_pages == layout.size() / 4096 {
+                    link = l;
+                    break;
+                }
+            }
+
+            if link.is_none() {
+                Err(EINVAL)
+            } else {
+                let span = link.resolve();
+                unsafe {
+                    clear_memory_range(
+                        span.start.value(),
+                        span.start.value() + sc.to_npage() * 4096,
+                    );
+                }
+                self.allocated_big_objects[sc as usize].remove(link);
+                if self.free_big_objects[sc as usize].len() > FREE_BIG_OBJECT_LIST_LENGTH_LIMIT {
+                    // should return to the system
+                    todo!()
+                } else {
+                    self.free_big_objects[sc as usize].push_front(link);
+                    Ok(())
+                }
+            }
+        }
+    }
 }
 
 impl HeapFrontend {
-    // pub fn pick_size_class(v: u64) -> Log2SizeClass {
-    // if v <= 8 {
-    // Log2SizeClass::SZ_8
-    // } else {
-    // let mut n = v - 1;
-    // n |= n >> 1; // Divide by 2^k for consecutive doublings of k up to 32,
-    // n |= n >> 2; // and then or the results.
-    // n |= n >> 4;
-    // n |= n >> 8;
-    // n |= n >> 16;
-    // n |= n >> 32;
-    // n = n + 1;
-    // Log2SizeClass::from(n.ilog2())
-    // }
-    // }
-    //
-    pub fn pick_size_class(v: u64) -> Log2SizeClass {
+    pub const HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE: usize = 4000;
+    pub fn pick_size_class(v: usize) -> Log2SizeClass {
         match v {
             0..9 => Log2SizeClass::SZ_8,
             9..17 => Log2SizeClass::SZ_16,
@@ -290,7 +415,7 @@ impl HeapFrontend {
             257..513 => Log2SizeClass::SZ_512,
             513..1025 => Log2SizeClass::SZ_1024,
             1025..2049 => Log2SizeClass::SZ_2048,
-            2049..4000 => Log2SizeClass::SZ_LARGE,
+            2049..Self::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE => Log2SizeClass::SZ_LARGE,
             _ => Log2SizeClass::Undefined,
         }
     }
@@ -312,7 +437,7 @@ impl HeapFrontend {
     }
 
     pub fn refill(&mut self, start: usize, layout: Layout) -> Result<(), ErrorCode> {
-        let sc = Self::pick_size_class(layout.size() as u64);
+        let sc = Self::pick_size_class(layout.size());
         println!("layout {:?}, sc = {}", layout, sc);
         if sc == Log2SizeClass::Undefined {
             todo!()
@@ -321,7 +446,7 @@ impl HeapFrontend {
     }
 
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
-        let sz = Self::pick_size_class(layout.size() as u64) as usize;
+        let sz = Self::pick_size_class(layout.size()) as usize;
         if (sz - 3) >= self.sc_allocator.len() {
             return None;
         }
@@ -332,7 +457,7 @@ impl HeapFrontend {
         ptr: *mut u8,
         layout: Layout,
     ) -> Result<Option<VirtualAddress>, ErrorCode> {
-        let sz = Self::pick_size_class(layout.size() as u64) as usize;
+        let sz = Self::pick_size_class(layout.size()) as usize;
         if (sz - 3) >= self.sc_allocator.len() {
             return Err(ESUPPORTED);
         }
@@ -463,12 +588,36 @@ impl HeapAllocator {
     }
 
     fn alloc(&self, layout: Layout) -> *mut u8 {
-        if let Some(ptr) = self.allocator.lock().alloc(layout) {
-            return ptr;
+        if layout.size() >= HeapFrontend::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE {
+            println!("big {:?}", layout);
+            if let Some(p) = self.allocator.lock().backend.alloc_big(layout) {
+                return p;
+            }
+
+            let npages = HeapBackend::pick_big_object_size(layout.size()).to_npage();
+            if let Ok(mapped) = super::MMU
+                .get()
+                .unwrap()
+                .kzalloc(npages, RWNORMAL, HIGHER_PAGE)
+            {
+                println!("1111");
+                if self.allocator.lock().backend.refill_big(mapped).is_err() {
+                    return core::ptr::null::<u8>() as *mut u8;
+                }
+
+                println!("2222");
+                if let Some(p) = self.allocator.lock().backend.alloc_big(layout) {
+                    return p;
+                } else {
+                    return core::ptr::null::<u8>() as *mut u8;
+                }
+            } else {
+                return core::ptr::null::<u8>() as *mut u8;
+            };
         }
 
-        if layout.size() > 4096 {
-            todo!()
+        if let Some(ptr) = self.allocator.lock().alloc(layout) {
+            return ptr;
         }
 
         let mut free_4k_page = if let Some(p) = self.allocator.lock().backend.allocate_4K_free() {
@@ -477,9 +626,7 @@ impl HeapAllocator {
             0
         };
         if free_4k_page == 0 {
-            const ADDRESS_NODE_SIZE: usize = Layout::new::<AddressRangeNode<VaRange>>().size();
-
-            if layout.size() == ADDRESS_NODE_SIZE {
+            if layout.size() == allocator::ADDRESS_RANGE_NODE_SIZE {
                 // since in kzalloc, page/frame_allocator will call Box<AddressRangeNode<*aRange>>
                 // this requires special handl
                 todo!()
@@ -570,6 +717,9 @@ mod tests {
 
     #[kernel_test]
     fn test_heap() {
+        let span_size = core::mem::size_of::<Span>();
+        println!("span size {}", span_size);
+
         {
             let mut buffer = HEAP_ALLOCATOR.get().unwrap().alloc_bump_buffer(1).unwrap();
             let mut i = 0;
