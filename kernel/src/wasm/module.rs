@@ -1,7 +1,8 @@
 extern crate alloc;
 use crate::{
-    errno::{ErrorCode, EINVAL},
+    errno::ErrorCode,
     memory::heap,
+    synchronization::{Spinlock, SpinlockGuard},
     type_enum, type_enum_with_error,
 };
 use alloc::{slice::Iter, vec::Vec};
@@ -10,11 +11,15 @@ use core::{
     iter::Iterator,
     ops::{Deref, DerefMut, Index, IndexMut},
 };
-use nom::error::{Error, ErrorKind};
+use nom::error::{Error, ErrorKind, ParseError};
+use spin::once::Once;
 use test_macros::SingleField;
 
 mod instructions;
 mod parser;
+
+use instructions::*;
+use parser::*;
 
 type ParserResult<'a, O> = Result<(&'a [u8], O), Error<&'a [u8]>>;
 
@@ -173,6 +178,14 @@ struct U32(u32);
 #[repr(transparent)]
 struct U64(u64);
 
+#[derive(PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct F32(f32);
+
+#[derive(PartialEq, Default, Clone, Copy, SingleField)]
+#[repr(transparent)]
+struct F64(f64);
+
 #[derive(Eq, PartialEq, Default, Clone, Copy, SingleField)]
 #[repr(transparent)]
 struct S32(i32);
@@ -234,6 +247,16 @@ impl fmt::Display for GlobalType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "global {} {}", self.m, self.t)
     }
+}
+
+union Val {
+    v_i32: I32,
+    v_i64: I32,
+}
+
+#[repr(C)]
+struct Global {
+    t: GlobalType,
 }
 
 #[repr(C)]
@@ -327,15 +350,6 @@ impl fmt::Display for Export {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "name: {}, desc: {},", self.nm, self.desc)
     }
-}
-
-#[repr(C)]
-struct Expr {}
-
-#[repr(C)]
-struct Global {
-    gt: GlobalType,
-    e: Expr,
 }
 
 #[repr(C)]
@@ -489,12 +503,76 @@ impl<T: fmt::Display> fmt::Display for WasmSection<T> {
     }
 }
 
-struct GlobalStore {}
+struct WasmFunc {
+    moduleid: u32,
+    typeid: u32,
+    locals: Vec<ValType>,
+    expr: Expr,
+}
+
+struct HostFunc {}
+
+enum FuncInst {
+    W(WasmFunc),
+    H(HostFunc),
+}
+
+struct GlobalStore {
+    modules: Vec<WasmModule>,
+    types: Vec<FuncType>,
+    funcs: Vec<FuncInst>,
+    tables: Vec<TableType>,
+}
+
+impl GlobalStore {
+    fn new() -> Self {
+        Self {
+            modules: Vec::new(),
+            types: Vec::new(),
+            funcs: Vec::new(),
+            tables: Vec::new(),
+        }
+    }
+
+    fn push_module(&mut self, m: WasmModule) -> Idx {
+        self.modules.push(m);
+        self.modules.len() - 1
+    }
+}
+
+pub struct WasmManager {
+    store: Spinlock<GlobalStore>,
+    parser: WasmParser,
+}
+
+type GuardedGlobalStore<'a> = SpinlockGuard<'a, GlobalStore>;
+
+impl WasmManager {
+    fn new() -> Self {
+        Self {
+            store: Spinlock::new(GlobalStore::new()),
+            parser: WasmParser::new(),
+        }
+    }
+
+    fn parse<'a>(&self, input: &'a [u8]) -> ParserResult<'a, Idx> {
+        let mut guard = self.store.lock();
+        self.parser.parse(input, &mut guard)
+    }
+}
+
+pub static WASM_MANAGER: Once<WasmManager> = Once::new();
+
+pub fn init() -> Result<(), ErrorCode> {
+    WASM_MANAGER.call_once(|| WasmManager::new());
+    Ok(())
+}
+
+pub type Idx = usize;
 
 pub struct WasmModule {
-    buffer: Option<heap::BumpBuffer>,
     type_section: Option<TypeSection>,
-    func_section: Option<FuncSection>,
+    func_section: Option<Vec<Idx>>,
     table_section: Option<TableSection>,
     import_section: Option<ImportSection>,
     export_section: Option<ExportSection>,
@@ -505,9 +583,7 @@ impl fmt::Display for WasmModule {
         if let Some(ref s) = self.type_section {
             writeln!(f, "{}", s)?;
         }
-        if let Some(ref s) = self.func_section {
-            writeln!(f, "{}", s)?;
-        }
+
         if let Some(ref s) = self.table_section {
             writeln!(f, "{}", s)?;
         }
@@ -524,7 +600,6 @@ impl fmt::Display for WasmModule {
 impl<'a> WasmModule {
     pub fn new() -> Self {
         WasmModule {
-            buffer: None,
             type_section: None,
             func_section: None,
             table_section: None,

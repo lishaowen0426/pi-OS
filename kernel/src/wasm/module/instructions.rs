@@ -10,7 +10,6 @@ struct Stack {
     s: *mut u8,
 }
 
-
 type InstFn = fn(stack: &Stack) -> ();
 
 trait WasmInst {
@@ -19,7 +18,7 @@ trait WasmInst {
 }
 
 // A sequence of instructions ended with 0x0B
-struct Expr {}
+pub struct Expr {}
 
 // Control Instructions
 pub enum BlockType {

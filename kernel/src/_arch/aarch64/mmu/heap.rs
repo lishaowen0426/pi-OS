@@ -14,7 +14,7 @@ use core::{
     ops::{Deref, Drop},
 };
 
-use spin::{mutex::SpinMutex, once::Once};
+use spin::once::Once;
 use test_macros::impl_doubly_linkable;
 
 const BACKEND_FREE_4K: usize = 16;

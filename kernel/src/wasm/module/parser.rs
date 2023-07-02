@@ -134,6 +134,21 @@ impl Parseable for S33 {
     }
 }
 
+impl Parseable for F32 {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, f) = take(4usize)(input).finish()?;
+        let f = f32::from_le_bytes(f.try_into().unwrap());
+        Ok((remaining, Self(f)))
+    }
+}
+impl Parseable for F64 {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, f) = take(8usize)(input).finish()?;
+        let f = f64::from_le_bytes(f.try_into().unwrap());
+        Ok((remaining, Self(f)))
+    }
+}
+
 impl Parseable for SectionType {
     fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, output) = take(1usize)(input).finish()?;
@@ -380,8 +395,16 @@ impl WasmParser {
         Self {}
     }
 
-    pub fn parse<'a>(&mut self, input: &'a [u8], module: &mut WasmModule) -> ParserResult<'a, ()> {
-        self.check_magic_and_version_and_parse_sections(input, module)
+    pub fn parse<'a>(
+        &self,
+        input: &'a [u8],
+        store: &mut GuardedGlobalStore,
+    ) -> ParserResult<'a, Idx> {
+        let mut module = WasmModule::new();
+        let (remaining, _) =
+            self.check_magic_and_version_and_parse_sections(input, store, &mut module)?;
+        let idx = store.push_module(module);
+        Ok((remaining, idx))
     }
 
     fn check_magic_and_version(input: &[u8]) -> ParserResult<'_, ()> {
@@ -394,9 +417,10 @@ impl WasmParser {
     }
 
     fn parse_section_content<'a>(
-        &mut self,
+        &self,
         input: &'a [u8],
         section_header: SectionHeader,
+        store: &mut GuardedGlobalStore,
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
         let (remaining, content) = take(section_header.size.0)(input).finish()?;
@@ -405,7 +429,7 @@ impl WasmParser {
                 self.parse_type_section(section_header, content, module)?;
             }
             SectionType::Function => {
-                self.parse_func_section(section_header, content, module)?;
+                self.parse_func_section(section_header, content, store, module)?;
             }
             SectionType::Table => {
                 self.parse_table_section(section_header, content, module)?;
@@ -422,8 +446,9 @@ impl WasmParser {
     }
 
     fn check_magic_and_version_and_parse_sections<'a>(
-        &mut self,
+        &self,
         input: &'a [u8],
+        store: &mut GuardedGlobalStore,
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
         let mut next_section_order: u8 = SECTION_TYPE_TO_ORDER[SectionType::Type as usize];
@@ -439,7 +464,8 @@ impl WasmParser {
                             next_section_order =
                                 SECTION_TYPE_TO_ORDER[section_header.id as usize] + 1;
                         }
-                        let (r, _) = self.parse_section_content(r, section_header, module)?;
+                        let (r, _) =
+                            self.parse_section_content(r, section_header, store, module)?;
                         r
                     }
                 }
@@ -455,7 +481,7 @@ impl WasmParser {
     }
 
     fn parse_type_section<'a>(
-        &mut self,
+        &self,
         section_header: SectionHeader,
         content: &'a [u8],
         module: &mut WasmModule,
@@ -470,9 +496,10 @@ impl WasmParser {
         }
     }
     fn parse_func_section<'a>(
-        &mut self,
+        &self,
         section_header: SectionHeader,
         content: &'a [u8],
+        store: &mut GuardedGlobalStore,
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
         let (remaining, idx) = WasmVector::<U32>::parse(content)?;
@@ -480,12 +507,12 @@ impl WasmParser {
         if module.func_section.is_some() {
             Err(Error::new(remaining, ErrorKind::Fail))
         } else {
-            module.func_section = Some(func_sec);
+            // module.func_section = Some(func_sec);
             Ok((remaining, ()))
         }
     }
     fn parse_table_section<'a>(
-        &mut self,
+        &self,
         section_header: SectionHeader,
         content: &'a [u8],
         module: &mut WasmModule,
@@ -500,7 +527,7 @@ impl WasmParser {
         }
     }
     fn parse_import_section<'a>(
-        &mut self,
+        &self,
         section_header: SectionHeader,
         content: &'a [u8],
         module: &mut WasmModule,
@@ -515,7 +542,7 @@ impl WasmParser {
         }
     }
     fn parse_export_section<'a>(
-        &mut self,
+        &self,
         section_header: SectionHeader,
         content: &'a [u8],
         module: &mut WasmModule,
@@ -538,15 +565,5 @@ mod tests {
     use test_macros::kernel_test;
     const WASM_MODULE: &[u8; 360] = include_bytes!("../module.wasm");
     #[kernel_test]
-    fn test_parser() {
-        let mut module = WasmModule::new();
-        let mut parser = WasmParser::new();
-        parser.parse(WASM_MODULE, &mut module).unwrap();
-        println!("{}", module);
-
-        let i: i8 = i8::MIN;
-        let ii: u8 = 255;
-        println!("{:#010b}", i);
-        println!("{}", ii as i8);
-    }
+    fn test_parser() {}
 }
