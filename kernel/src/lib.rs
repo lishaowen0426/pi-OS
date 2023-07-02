@@ -19,6 +19,7 @@
 #![feature(nonzero_min_max)]
 #![feature(panic_info_message)]
 #![feature(trait_alias)]
+#![feature(allocator_api)]
 #![feature(exclusive_range_pattern)]
 #![feature(unchecked_math)]
 #![feature(sync_unsafe_cell)]

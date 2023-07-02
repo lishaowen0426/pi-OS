@@ -39,7 +39,7 @@ test-types = {path = "../libraries/test-types"}
 zerocopy = "0.6.1"
 test-macros = {path = "../libraries/test-macros"}
 spin = "0.9.8"
-intrusive-collections = "0.9"
+intrusive-collections = {path = "../libraries/intrusive-rs"}
 nom = {version = "7", default-features = false, features = ["alloc"]}
 
 # Plaftform specific dependencies

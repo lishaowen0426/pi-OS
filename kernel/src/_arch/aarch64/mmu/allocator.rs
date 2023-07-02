@@ -1,4 +1,5 @@
 extern crate alloc;
+use core::alloc::Allocator;
 
 use super::{address::*, heap::*};
 use crate::{
@@ -41,6 +42,10 @@ where
     fn range_copy(&self) -> T {
         self.range.clone()
     }
+
+    fn replace_with(&mut self, r: T) {
+        self.range = r;
+    }
 }
 
 pub const ADDRESS_RANGE_NODE_SIZE: usize = core::mem::size_of::<AddressRangeNode<VaRange>>();
@@ -58,6 +63,7 @@ where
 
 struct UnsafeFrameAllocator {
     pma: RBTree<AddressRangeAdaptor<PaRange>>,
+    placeholder: AddressRangeNode<PaRange>,
 }
 
 impl fmt::Display for UnsafeFrameAllocator {
@@ -69,10 +75,24 @@ impl fmt::Display for UnsafeFrameAllocator {
     }
 }
 
+struct TrivialAlloc;
+
+unsafe impl Allocator for TrivialAlloc {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        Err(core::alloc::AllocError)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {}
+}
+
 impl UnsafeFrameAllocator {
     pub fn new(pa_range: PaRange) -> Self {
         let mut frame_allocator = Self {
             pma: RBTree::new(AddressRangeAdaptor::new()),
+            placeholder: AddressRangeNode::new(PaRange::new(0, 0)),
         };
         frame_allocator.init(pa_range);
         frame_allocator
@@ -94,9 +114,10 @@ impl UnsafeFrameAllocator {
                     return Err(EFRAME);
                 }
                 let pa = range.pop_bytes_front(nbytes).unwrap();
-                cursor
-                    .replace_with(Box::new(AddressRangeNode::new(range)))
-                    .unwrap();
+                // cursor.replace_with(Box::new(AddressRangeNode::new(range))).unwrap();
+                let b = cursor.into_mut().ok_or(EFRAME)?;
+                b.replace_with(range);
+
                 return Ok(pa.to_bytes_range(nbytes));
             }
         }
