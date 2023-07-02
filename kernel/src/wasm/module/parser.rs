@@ -96,35 +96,35 @@ fn take_unsigned(N: usize, input: &[u8]) -> ParserResult<'_, u64> {
 }
 
 impl Parseable for Byte {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, b) = take(1usize)(input).finish()?;
         Ok((remaining, Byte(b[0])))
     }
 }
 impl Parseable for U32 {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         take_unsigned(32usize, input).map(|(i, u)| (i, Self(u as u32)))
     }
 }
 impl Parseable for U64 {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         take_unsigned(64usize, input).map(|(i, u)| (i, Self(u as u64)))
     }
 }
 
 impl Parseable for S32 {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         take_signed(32usize, input).map(|(i, s)| (i, Self(s as i32)))
     }
 }
 impl Parseable for S64 {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         take_signed(64usize, input).map(|(i, s)| (i, Self(s as i64)))
     }
 }
 
 impl Parseable for S33 {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, s) = take_signed(33, input)?;
         if s.is_negative() {
             Err(Error::new(remaining, ErrorKind::Fail))
@@ -135,7 +135,7 @@ impl Parseable for S33 {
 }
 
 impl Parseable for SectionType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, output) = take(1usize)(input).finish()?;
         let section_type = SectionType::try_from(output[0])
             .map_err(|error_kind| Error::new(remaining, error_kind))?;
@@ -144,9 +144,9 @@ impl Parseable for SectionType {
 }
 
 impl Parseable for SectionHeader {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, section_type) = SectionType::parse(input, alloc)?;
-        let (remaining, section_size) = U32::parse(remaining, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, section_type) = SectionType::parse(input)?;
+        let (remaining, section_size) = U32::parse(remaining)?;
         Ok((
             remaining,
             Self {
@@ -158,7 +158,7 @@ impl Parseable for SectionHeader {
 }
 
 impl Parseable for MutType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, b) = take(1usize)(input).finish()?;
         let b = b[0];
 
@@ -171,38 +171,31 @@ impl Parseable for MutType {
 }
 
 impl Parseable for GlobalType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, t) = ValType::parse(input, alloc)?;
-        let (remaining, m) = MutType::parse(remaining, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, t) = ValType::parse(input)?;
+        let (remaining, m) = MutType::parse(remaining)?;
 
         Ok((remaining, GlobalType { t, m }))
     }
 }
 
-impl<T: Parseable> Parseable for WasmVector<T> {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (mut remaining, vec_len) = U32::parse(input, alloc)?;
-        if let Some(a) = alloc.as_mut() {
-            let buffer: *mut T =
-                a.alloc_n(vec_len.0 as usize * core::mem::size_of::<T>())
-                    .map_err(|_| Error::new(remaining, ErrorKind::Fail))? as *mut T;
-            unsafe {
-                for i in 0..vec_len.0 {
-                    let (r, t) = T::parse(remaining, alloc)?;
-                    remaining = r;
-
-                    buffer.offset(i as isize).write(t);
-                }
-                Ok((remaining, Self::new(vec_len, buffer)))
-            }
-        } else {
-            Err(Error::new(remaining, ErrorKind::Fail))
+impl<T: Parseable + fmt::Display> Parseable for WasmVector<T> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (mut remaining, vec_len) = U32::parse(input)?;
+        let mut v = WasmVector::<T>::new(vec_len.0 as usize);
+        println!("vec addr {:#018x}", v.addr());
+        for i in 0..vec_len.0 {
+            let (r, t) = T::parse(remaining)?;
+            remaining = r;
+            v.push(t);
         }
+
+        Ok((remaining, v))
     }
 }
 
 impl Parseable for ValType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, b) = take(1usize)(input).finish()?;
         let b = b[0];
 
@@ -219,33 +212,33 @@ impl Parseable for ValType {
 }
 
 impl Parseable for ResultType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, values) = WasmVector::<ValType>::parse(input, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, values) = WasmVector::<ValType>::parse(input)?;
         Ok((remaining, ResultType { values }))
     }
 }
 
 impl Parseable for FuncType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, tag) = take(1usize)(input).finish()?;
         if tag[0] != 0x60u8 {
             return Err(Error::new(remaining, ErrorKind::IsNot));
         }
-        let (remaining, input) = ResultType::parse(remaining, alloc)?;
-        let (remaining, output) = ResultType::parse(remaining, alloc)?;
+        let (remaining, input) = ResultType::parse(remaining)?;
+        let (remaining, output) = ResultType::parse(remaining)?;
         Ok((remaining, FuncType { input, output }))
     }
 }
 
 impl Parseable for Limits {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, tag) = take(1usize)(input).finish()?;
         if tag[0] == 0x00u8 {
-            let (remaining, min) = U32::parse(remaining, alloc)?;
+            let (remaining, min) = U32::parse(remaining)?;
             Ok((remaining, Limits { min, max: None }))
         } else if tag[0] == 0x01u8 {
-            let (remaining, min) = U32::parse(remaining, alloc)?;
-            let (remaining, max) = U32::parse(remaining, alloc)?;
+            let (remaining, min) = U32::parse(remaining)?;
+            let (remaining, max) = U32::parse(remaining)?;
             Ok((
                 remaining,
                 Limits {
@@ -260,7 +253,7 @@ impl Parseable for Limits {
 }
 
 impl Parseable for RefType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, b) = take(1usize)(input).finish()?;
         let b = b[0];
 
@@ -273,15 +266,15 @@ impl Parseable for RefType {
 }
 
 impl Parseable for TableType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, et) = RefType::parse(input, alloc)?;
-        let (remaining, lim) = Limits::parse(remaining, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, et) = RefType::parse(input)?;
+        let (remaining, lim) = Limits::parse(remaining)?;
         Ok((remaining, TableType { et, lim }))
     }
 }
 
 impl Parseable for BlockType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let b = input[0];
 
         if b == 0x40 {
@@ -294,36 +287,36 @@ impl Parseable for BlockType {
             return Ok((remaining, BlockType::T(t)));
         }
 
-        let (remaining, x) = S33::parse(input, alloc)?;
+        let (remaining, x) = S33::parse(input)?;
         Ok((remaining, BlockType::X(x)))
     }
 }
 
 impl Parseable for MemType {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, lim) = Limits::parse(input, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, lim) = Limits::parse(input)?;
         Ok((remaining, Self { lim }))
     }
 }
 
 impl Parseable for ImportDesc {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, tag) = take(1usize)(input).finish()?;
         match tag[0] {
             0x00u8 => {
-                let (remaining, type_idx) = U32::parse(remaining, alloc)?;
+                let (remaining, type_idx) = U32::parse(remaining)?;
                 Ok((remaining, Self::Func(type_idx)))
             }
             0x01u8 => {
-                let (remaining, tt) = TableType::parse(remaining, alloc)?;
+                let (remaining, tt) = TableType::parse(remaining)?;
                 Ok((remaining, Self::Table(tt)))
             }
             0x02u8 => {
-                let (remaining, mt) = MemType::parse(remaining, alloc)?;
+                let (remaining, mt) = MemType::parse(remaining)?;
                 Ok((remaining, Self::Mem(mt)))
             }
             0x03u8 => {
-                let (remaining, gt) = GlobalType::parse(remaining, alloc)?;
+                let (remaining, gt) = GlobalType::parse(remaining)?;
                 Ok((remaining, Self::Global(gt)))
             }
             _ => Err(Error::new(remaining, ErrorKind::IsNot)),
@@ -332,23 +325,23 @@ impl Parseable for ImportDesc {
 }
 
 impl Parseable for ExportDesc {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, tag) = take(1usize)(input).finish()?;
         match tag[0] {
             0x00u8 => {
-                let (remaining, type_idx) = U32::parse(remaining, alloc)?;
+                let (remaining, type_idx) = U32::parse(remaining)?;
                 Ok((remaining, Self::Func(type_idx)))
             }
             0x01u8 => {
-                let (remaining, table_idx) = U32::parse(remaining, alloc)?;
+                let (remaining, table_idx) = U32::parse(remaining)?;
                 Ok((remaining, Self::Table(table_idx)))
             }
             0x02u8 => {
-                let (remaining, mem_idx) = U32::parse(remaining, alloc)?;
+                let (remaining, mem_idx) = U32::parse(remaining)?;
                 Ok((remaining, Self::Mem(mem_idx)))
             }
             0x03u8 => {
-                let (remaining, global_idx) = U32::parse(remaining, alloc)?;
+                let (remaining, global_idx) = U32::parse(remaining)?;
                 Ok((remaining, Self::Global(global_idx)))
             }
             _ => Err(Error::new(remaining, ErrorKind::IsNot)),
@@ -357,36 +350,34 @@ impl Parseable for ExportDesc {
 }
 
 impl Parseable for Export {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, nm) = Name::parse(input, alloc)?;
-        let (remaining, desc) = ExportDesc::parse(remaining, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, nm) = Name::parse(input)?;
+        let (remaining, desc) = ExportDesc::parse(remaining)?;
         Ok((remaining, Export { nm, desc }))
     }
 }
 
 impl Parseable for Name {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, b) = WasmVector::<Byte>::parse(input, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, b) = WasmVector::<Byte>::parse(input)?;
         Ok((remaining, Name { b }))
     }
 }
 
 impl Parseable for Import {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self> {
-        let (remaining, module) = Name::parse(input, alloc)?;
-        let (remaining, nm) = Name::parse(remaining, alloc)?;
-        let (remaining, desc) = ImportDesc::parse(remaining, alloc)?;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, module) = Name::parse(input)?;
+        let (remaining, nm) = Name::parse(remaining)?;
+        let (remaining, desc) = ImportDesc::parse(remaining)?;
         Ok((remaining, Import { module, nm, desc }))
     }
 }
 
-pub struct WasmParser {
-    alloc: Option<heap::BumpBuffer>,
-}
+pub struct WasmParser {}
 
 impl WasmParser {
     pub const fn new() -> Self {
-        Self { alloc: None }
+        Self {}
     }
 
     pub fn parse<'a>(&mut self, input: &'a [u8], module: &mut WasmModule) -> ParserResult<'a, ()> {
@@ -438,17 +429,8 @@ impl WasmParser {
         let mut next_section_order: u8 = SECTION_TYPE_TO_ORDER[SectionType::Type as usize];
         let (mut remaining, _) = Self::check_magic_and_version(input)?;
 
-        let buffer_pages: usize = remaining.len().div_ceil(4096);
-        let bump_buffer = heap::HEAP_ALLOCATOR
-            .get()
-            .unwrap()
-            .alloc_bump_buffer(buffer_pages)
-            .map_err(|_| Error::new(remaining, ErrorKind::Fail))?;
-
-        self.alloc = Some(bump_buffer);
-
         loop {
-            remaining = match SectionHeader::parse(remaining, &mut self.alloc) {
+            remaining = match SectionHeader::parse(remaining) {
                 Ok((r, section_header)) => {
                     if SECTION_TYPE_TO_ORDER[section_header.id as usize] < next_section_order {
                         return Err(Error::new(r, ErrorKind::IsNot));
@@ -478,7 +460,7 @@ impl WasmParser {
         content: &'a [u8],
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
-        let (remaining, types) = WasmVector::<FuncType>::parse(content, &mut self.alloc)?;
+        let (remaining, types) = WasmVector::<FuncType>::parse(content)?;
         let type_sec = TypeSection::new(section_header, types);
         if module.type_section.is_some() {
             Err(Error::new(remaining, ErrorKind::Fail))
@@ -493,7 +475,7 @@ impl WasmParser {
         content: &'a [u8],
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
-        let (remaining, idx) = WasmVector::<U32>::parse(content, &mut self.alloc)?;
+        let (remaining, idx) = WasmVector::<U32>::parse(content)?;
         let func_sec = FuncSection::new(section_header, idx);
         if module.func_section.is_some() {
             Err(Error::new(remaining, ErrorKind::Fail))
@@ -508,7 +490,7 @@ impl WasmParser {
         content: &'a [u8],
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
-        let (remaining, tables) = WasmVector::<TableType>::parse(content, &mut self.alloc)?;
+        let (remaining, tables) = WasmVector::<TableType>::parse(content)?;
         let table_sec = TableSection::new(section_header, tables);
         if module.table_section.is_some() {
             Err(Error::new(remaining, ErrorKind::Fail))
@@ -523,7 +505,7 @@ impl WasmParser {
         content: &'a [u8],
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
-        let (remaining, imports) = WasmVector::<Import>::parse(content, &mut self.alloc)?;
+        let (remaining, imports) = WasmVector::<Import>::parse(content)?;
         let import_sec = ImportSection::new(section_header, imports);
         if module.import_section.is_some() {
             Err(Error::new(remaining, ErrorKind::Fail))
@@ -538,7 +520,7 @@ impl WasmParser {
         content: &'a [u8],
         module: &mut WasmModule,
     ) -> ParserResult<'a, ()> {
-        let (remaining, exports) = WasmVector::<Export>::parse(content, &mut self.alloc)?;
+        let (remaining, exports) = WasmVector::<Export>::parse(content)?;
         let export_sec = ExportSection::new(section_header, exports);
         if module.export_section.is_some() {
             Err(Error::new(remaining, ErrorKind::Fail))

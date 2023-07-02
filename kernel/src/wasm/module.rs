@@ -4,7 +4,7 @@ use crate::{
     memory::heap,
     type_enum, type_enum_with_error,
 };
-use alloc::vec::Vec;
+use alloc::{slice::Iter, vec::Vec};
 use core::{
     fmt,
     iter::Iterator,
@@ -22,7 +22,7 @@ trait Parseable
 where
     Self: Sized,
 {
-    fn parse<'a>(input: &'a [u8], alloc: &mut Option<heap::BumpBuffer>) -> ParserResult<'a, Self>;
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self>;
 }
 
 type_enum!(
@@ -200,6 +200,7 @@ struct Limits {
     min: U32,
     max: Option<U32>,
 }
+use crate::println;
 
 impl fmt::Display for Limits {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -253,9 +254,11 @@ struct Name {
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let b = self.b.elems.as_ptr() as *const u8;
         unsafe {
-            let s = core::slice::from_raw_parts(self.b.elements as *const u8, self.b.n.0 as usize);
-            write!(f, "{}", core::str::from_utf8_unchecked(s))
+            let s = core::slice::from_raw_parts(b, self.b.elems.len());
+            let name = core::str::from_utf8(s).unwrap();
+            write!(f, "{}", name)
         }
     }
 }
@@ -335,107 +338,94 @@ struct Global {
     e: Expr,
 }
 
+#[repr(C)]
 struct WasmVectorIter<'a, T> {
-    v: &'a WasmVector<T>,
-    next: usize,
+    it: Iter<'a, T>,
 }
 
 impl<'a, T> Iterator for WasmVectorIter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next >= self.v.n.0 as usize {
-            None
-        } else {
-            self.next += 1;
-            Some(&self.v[self.next - 1])
-        }
+        self.it.next()
     }
 }
 
-#[repr(C)]
+#[repr(transparent)]
 struct WasmVector<T> {
-    n: U32,
-    elements: *mut T,
+    elems: Vec<T>,
 }
 
 impl<T: fmt::Display> fmt::Display for WasmVector<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe {
-            let s = core::slice::from_raw_parts(self.elements as *const T, self.n.0 as usize);
-            for e in s.iter() {
-                writeln!(f, "    {} ", e)?;
-            }
+        for e in self.elems.iter() {
+            writeln!(f, "    {} ", *e)?;
         }
         Ok(())
     }
 }
-impl<T> fmt::Debug for WasmVector<T> {
+impl<T: fmt::Display> fmt::Debug for WasmVector<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "len = {}", self.n)?;
-        let buffer = self.elements as *const u8;
-        unsafe {
-            for i in 0..self.n.0 {
-                write!(f, "{:#04x} ", buffer.offset(i as isize).read());
-                if i % 10 == 0 {
-                    writeln!(f, "")?;
-                }
-            }
+        for e in self.elems.iter() {
+            writeln!(f, "    {} ", *e)?;
         }
-        writeln!(f, "")
+        Ok(())
     }
 }
 
 impl<T> Default for WasmVector<T> {
     fn default() -> Self {
-        Self {
-            n: 0u32.into(),
-            elements: core::ptr::null_mut(),
-        }
+        Self { elems: Vec::new() }
     }
 }
 
 impl<T> WasmVector<T> {
-    fn new(n: U32, elements: *mut T) -> Self {
-        Self { n, elements }
-    }
-
-    fn init(&mut self, n: U32, elements: *mut T) -> Result<(), ErrorCode> {
-        if n != 0u32.into() || !elements.is_null() {
-            Err(EINVAL)
-        } else {
-            self.n = n;
-            self.elements = elements;
-            Ok(())
+    fn new(cap: usize) -> Self {
+        Self {
+            elems: Vec::with_capacity(cap),
         }
     }
 
+    fn push(&mut self, value: T) {
+        self.elems.push(value)
+    }
+
+    fn len(&self) -> usize {
+        self.elems.len()
+    }
+
     fn iter(&self) -> WasmVectorIter<T> {
-        WasmVectorIter { v: self, next: 0 }
+        WasmVectorIter {
+            it: self.elems.iter(),
+        }
+    }
+
+    fn addr(&self) -> usize {
+        self.elems.as_ptr() as usize
     }
 }
 
 impl<T> Index<usize> for WasmVector<T> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
-        unsafe { self.elements.offset(index as isize).as_ref().unwrap() }
+        self.elems.get(index).unwrap()
     }
 }
 
 impl<T> IndexMut<usize> for WasmVector<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        unsafe { self.elements.offset(index as isize).as_mut().unwrap() }
+        self.elems.get_mut(index).unwrap()
     }
 }
 impl<T> Index<U32> for WasmVector<T> {
     type Output = T;
     fn index(&self, index: U32) -> &Self::Output {
-        unsafe { self.elements.offset(index.0 as isize).as_ref().unwrap() }
+        self.elems.get(index.0 as usize).unwrap()
     }
 }
 
 impl<T> IndexMut<U32> for WasmVector<T> {
     fn index_mut(&mut self, index: U32) -> &mut Self::Output {
-        unsafe { self.elements.offset(index.0 as isize).as_mut().unwrap() }
+        self.elems.get_mut(index.0 as usize).unwrap()
     }
 }
 

@@ -103,6 +103,7 @@ where
         let base = self.data.as_ptr() as usize;
 
         let diff = ptr as usize - base;
+
         if diff % layout.size() != 0 {
             Err(EALIGN)
         } else if diff + layout.size() > self.data.len() {
@@ -163,7 +164,7 @@ struct HeapBackend {
     allocated_big_objects: [DoublyLinkedList<Span>; 4],
 }
 struct HeapFrontend {
-    sc_allocator: [Spinlock<SizeClassAllocator>; 10],
+    sc_allocator: [Spinlock<SizeClassAllocator>; 9],
 }
 
 type_enum!(
@@ -177,7 +178,6 @@ type_enum!(
         SZ_512 = 9,
         SZ_1024 = 10,
         SZ_2048 = 11,
-        SZ_LARGE = 12,
     }
 );
 
@@ -212,7 +212,9 @@ impl SizeClassAllocator {
     pub fn alloc(&mut self, layout: Layout) -> Option<*mut u8> {
         for l in self.slabs.iter() {
             let obj: &mut ObjectPage4K = l.resolve_mut();
-            if let Some(p) = obj.alloc(layout) {
+            let sz_layout =
+                Layout::from_size_align(self.size_class.to_bytes(), layout.align()).unwrap();
+            if let Some(p) = obj.alloc(sz_layout) {
                 return Some(p);
             } else {
                 // Check DoublyLinkedlistIteratror
@@ -232,7 +234,9 @@ impl SizeClassAllocator {
         let obj_base = va.align_to_4K_up();
         let link = Link::some(obj_base.value());
         let obj: &mut ObjectPage4K = link.resolve_mut();
-        obj.dealloc(ptr, layout).unwrap();
+        let sz_layout =
+            Layout::from_size_align(self.size_class.to_bytes(), layout.align()).unwrap();
+        obj.dealloc(ptr, sz_layout).unwrap();
 
         if obj.is_marked_full() {
             obj.clear_full();
@@ -418,7 +422,7 @@ impl HeapBackend {
 }
 
 impl HeapFrontend {
-    pub const HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE: usize = 4000;
+    pub const HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE: usize = 2049;
     pub fn pick_size_class(v: usize) -> Log2SizeClass {
         match v {
             0..9 => Log2SizeClass::SZ_8,
@@ -429,8 +433,7 @@ impl HeapFrontend {
             129..257 => Log2SizeClass::SZ_256,
             257..513 => Log2SizeClass::SZ_512,
             513..1025 => Log2SizeClass::SZ_1024,
-            1025..2049 => Log2SizeClass::SZ_2048,
-            2049..Self::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE => Log2SizeClass::SZ_LARGE,
+            1025..Self::HEAP_FRONTEND_MAX_SIZE_EXCLUSIVE => Log2SizeClass::SZ_2048,
             _ => Log2SizeClass::Undefined,
         }
     }
@@ -446,14 +449,12 @@ impl HeapFrontend {
                 Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_512)),
                 Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_1024)),
                 Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_2048)),
-                Spinlock::new(SizeClassAllocator::new(Log2SizeClass::SZ_LARGE)),
             ],
         }
     }
 
     pub fn refill(&self, start: usize, layout: Layout) -> Result<(), ErrorCode> {
         let sc = Self::pick_size_class(layout.size());
-        println!("layout {:?}, sc = {}", layout, sc);
         if sc == Log2SizeClass::Undefined {
             todo!()
         }
@@ -461,18 +462,18 @@ impl HeapFrontend {
     }
 
     pub fn alloc(&self, layout: Layout) -> Option<*mut u8> {
-        let sz = Self::pick_size_class(layout.size()) as usize;
-        if (sz - 3) >= self.sc_allocator.len() {
+        let sc = Self::pick_size_class(layout.size());
+        if (sc as usize - 3) >= self.sc_allocator.len() {
             return None;
         }
-        self.sc_allocator[sz - 3].lock().alloc(layout)
+        self.sc_allocator[sc as usize - 3].lock().alloc(layout)
     }
     fn dealloc(&self, ptr: *mut u8, layout: Layout) -> Result<Option<VirtualAddress>, ErrorCode> {
-        let sz = Self::pick_size_class(layout.size()) as usize;
-        if (sz - 3) >= self.sc_allocator.len() {
+        let sc = Self::pick_size_class(layout.size()) as usize;
+        if (sc - 3) >= self.sc_allocator.len() {
             return Err(ESUPPORTED);
         }
-        Ok(self.sc_allocator[sz - 3].lock().dealloc(ptr, layout))
+        Ok(self.sc_allocator[sc - 3].lock().dealloc(ptr, layout))
     }
 }
 
@@ -710,7 +711,6 @@ mod tests {
     #[kernel_test]
     fn test_heap() {
         let span_size = core::mem::size_of::<Span>();
-        println!("span size {}", span_size);
 
         {
             let mut buffer = HEAP_ALLOCATOR.get().unwrap().alloc_bump_buffer(1).unwrap();
