@@ -1,6 +1,6 @@
 extern crate alloc;
 use crate::{
-    errno::ErrorCode,
+    errno::*,
     memory::heap,
     synchronization::{Spinlock, SpinlockGuard},
     type_enum, type_enum_with_error,
@@ -8,7 +8,7 @@ use crate::{
 use alloc::{slice::Iter, vec::Vec};
 use core::{
     fmt,
-    iter::Iterator,
+    iter::{IntoIterator, Iterator},
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 use nom::error::{Error, ErrorKind, ParseError};
@@ -418,6 +418,14 @@ impl<T> WasmVector<T> {
     }
 }
 
+impl<T> IntoIterator for WasmVector<T> {
+    type Item = T;
+    type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.elems.into_iter()
+    }
+}
+
 impl<T> Index<usize> for WasmVector<T> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
@@ -503,23 +511,101 @@ impl<T: fmt::Display> fmt::Display for WasmSection<T> {
     }
 }
 
+#[repr(C)]
+struct Locals {
+    n: u32,
+    t: ValType,
+}
+
+impl fmt::Display for Locals {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({} x {})", self.n, self.t)
+    }
+}
+
+#[repr(C)]
+struct Func {
+    locals: WasmVector<Locals>,
+    e: Expr,
+}
+
+impl fmt::Display for Func {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.locals)?;
+        write!(f, "{}", self.e)
+    }
+}
+
+impl Func {
+    fn new() -> Self {
+        Self {
+            locals: WasmVector::new(0),
+            e: Expr::new(),
+        }
+    }
+}
+
 struct WasmFunc {
-    moduleid: u32,
-    typeid: u32,
-    locals: Vec<ValType>,
-    expr: Expr,
+    moduleid: usize,
+    typeid: usize,
+    func: Func,
+}
+
+impl WasmFunc {
+    fn new(moduleid: usize, typeid: usize) -> Self {
+        Self {
+            moduleid,
+            typeid,
+            func: Func::new(),
+        }
+    }
+}
+
+impl fmt::Display for WasmFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "module {}, type: {}, func: {}",
+            self.moduleid, self.typeid, self.func
+        )
+    }
 }
 
 struct HostFunc {}
+
+impl fmt::Display for HostFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
 
 enum FuncInst {
     W(WasmFunc),
     H(HostFunc),
 }
+impl fmt::Display for FuncInst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::W(ref w) => write!(f, "{}", w),
+            Self::H(ref h) => write!(f, "{}", h),
+        }
+    }
+}
+
+impl FuncInst {
+    fn set_wasm_func(&mut self, f: Func) -> Result<(), ErrorCode> {
+        match *self {
+            Self::W(ref mut wf) => {
+                wf.func = f;
+                Ok(())
+            }
+            _ => Err(EINVAL),
+        }
+    }
+}
 
 struct GlobalStore {
     modules: Vec<WasmModule>,
-    types: Vec<FuncType>,
     funcs: Vec<FuncInst>,
     tables: Vec<TableType>,
 }
@@ -528,7 +614,6 @@ impl GlobalStore {
     fn new() -> Self {
         Self {
             modules: Vec::new(),
-            types: Vec::new(),
             funcs: Vec::new(),
             tables: Vec::new(),
         }
@@ -537,6 +622,25 @@ impl GlobalStore {
     fn push_module(&mut self, m: WasmModule) -> Idx {
         self.modules.push(m);
         self.modules.len() - 1
+    }
+
+    fn get_module_mut(&mut self, idx: usize) -> &mut WasmModule {
+        &mut self.modules[idx]
+    }
+    fn get_module(&self, idx: usize) -> &WasmModule {
+        &self.modules[idx]
+    }
+
+    fn get_func_mut(&mut self, idx: usize) -> &mut FuncInst {
+        &mut self.funcs[idx]
+    }
+    fn get_func(&self, idx: usize) -> &FuncInst {
+        &self.funcs[idx]
+    }
+
+    fn push_function(&mut self, f: FuncInst) -> Idx {
+        self.funcs.push(f);
+        self.funcs.len() - 1
     }
 }
 
@@ -593,6 +697,14 @@ impl fmt::Display for WasmModule {
         if let Some(ref s) = self.export_section {
             writeln!(f, "{}", s)?;
         }
+
+        if let Some(ref s) = self.func_section {
+            let mut guarded_global_store = WASM_MANAGER.get().unwrap().store.lock();
+            for i in s {
+                let func_inst = guarded_global_store.get_func(*i);
+                writeln!(f, "{}", func_inst)?;
+            }
+        }
         Ok(())
     }
 }
@@ -621,6 +733,7 @@ mod tests {
     use super::*;
     use crate::println;
     use test_macros::kernel_test;
+    const WASM_MODULE: &[u8; 360] = include_bytes!("module.wasm");
 
     struct F {
         b: [u8; 40],
@@ -632,11 +745,7 @@ mod tests {
         }
     }
     #[kernel_test]
-    fn test_vector() {
-        const LEN: usize = 100;
-        let mut vec = Vec::new();
-        for i in 0..LEN {
-            vec.push(F::default());
-        }
+    fn test_wasm() {
+        let (_, module_idx) = WASM_MANAGER.get().unwrap().parse(WASM_MODULE).unwrap();
     }
 }

@@ -198,7 +198,6 @@ impl<T: Parseable + fmt::Display> Parseable for WasmVector<T> {
     fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (mut remaining, vec_len) = U32::parse(input)?;
         let mut v = WasmVector::<T>::new(vec_len.0 as usize);
-        println!("vec addr {:#018x}", v.addr());
         for i in 0..vec_len.0 {
             let (r, t) = T::parse(remaining)?;
             remaining = r;
@@ -388,6 +387,42 @@ impl Parseable for Import {
     }
 }
 
+impl Parseable for Locals {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, n) = U32::parse(input)?;
+        let n = n.0;
+        let (remaining, t) = ValType::parse(remaining)?;
+        Ok((remaining, Self { n, t }))
+    }
+}
+
+impl Parseable for Expr {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, insts) = take_till(|b: u8| b == 0x0Bu8)(input).finish()?;
+        let (remaining, _) = tag([0x0Bu8; 1])(remaining).finish()?;
+        println!("len {}", insts.len());
+        for b in insts {
+            println!("{:#04x} ", b);
+        }
+
+        Ok((remaining, Self::new()))
+    }
+}
+
+impl Parseable for Func {
+    fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
+        let (remaining, sz) = U32::parse(input)?;
+        let (remaining, code_bytes) = take(sz.0)(remaining).finish()?;
+        let (code_bytes, locals) = WasmVector::<Locals>::parse(code_bytes)?;
+        let (code_bytes, e) = Expr::parse(code_bytes)?;
+        if code_bytes.len() != 0 {
+            Err(Error::new(code_bytes, ErrorKind::LengthValue))
+        } else {
+            Ok((remaining, Self { locals, e }))
+        }
+    }
+}
+
 pub struct WasmParser {}
 
 impl WasmParser {
@@ -400,10 +435,9 @@ impl WasmParser {
         input: &'a [u8],
         store: &mut GuardedGlobalStore,
     ) -> ParserResult<'a, Idx> {
-        let mut module = WasmModule::new();
-        let (remaining, _) =
-            self.check_magic_and_version_and_parse_sections(input, store, &mut module)?;
+        let module = WasmModule::new();
         let idx = store.push_module(module);
+        let (remaining, _) = self.check_magic_and_version_and_parse_sections(input, store, idx)?;
         Ok((remaining, idx))
     }
 
@@ -421,24 +455,27 @@ impl WasmParser {
         input: &'a [u8],
         section_header: SectionHeader,
         store: &mut GuardedGlobalStore,
-        module: &mut WasmModule,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let (remaining, content) = take(section_header.size.0)(input).finish()?;
         match section_header.id {
             SectionType::Type => {
-                self.parse_type_section(section_header, content, module)?;
+                self.parse_type_section(section_header, content, store, module_idx)?;
             }
             SectionType::Function => {
-                self.parse_func_section(section_header, content, store, module)?;
+                self.parse_func_section(section_header, content, store, module_idx)?;
             }
             SectionType::Table => {
-                self.parse_table_section(section_header, content, module)?;
+                self.parse_table_section(section_header, content, store, module_idx)?;
             }
             SectionType::Import => {
-                self.parse_import_section(section_header, content, module)?;
+                self.parse_import_section(section_header, content, store, module_idx)?;
             }
             SectionType::Export => {
-                self.parse_export_section(section_header, content, module)?;
+                self.parse_export_section(section_header, content, store, module_idx)?;
+            }
+            SectionType::Code => {
+                self.parse_code_section(section_header, content, store, module_idx)?;
             }
             _ => {}
         };
@@ -449,7 +486,7 @@ impl WasmParser {
         &self,
         input: &'a [u8],
         store: &mut GuardedGlobalStore,
-        module: &mut WasmModule,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let mut next_section_order: u8 = SECTION_TYPE_TO_ORDER[SectionType::Type as usize];
         let (mut remaining, _) = Self::check_magic_and_version(input)?;
@@ -465,7 +502,7 @@ impl WasmParser {
                                 SECTION_TYPE_TO_ORDER[section_header.id as usize] + 1;
                         }
                         let (r, _) =
-                            self.parse_section_content(r, section_header, store, module)?;
+                            self.parse_section_content(r, section_header, store, module_idx)?;
                         r
                     }
                 }
@@ -484,8 +521,10 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        module: &mut WasmModule,
+        store: &mut GuardedGlobalStore,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
+        let module = store.get_module_mut(module_idx);
         let (remaining, types) = WasmVector::<FuncType>::parse(content)?;
         let type_sec = TypeSection::new(section_header, types);
         if module.type_section.is_some() {
@@ -500,23 +539,59 @@ impl WasmParser {
         section_header: SectionHeader,
         content: &'a [u8],
         store: &mut GuardedGlobalStore,
-        module: &mut WasmModule,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let (remaining, idx) = WasmVector::<U32>::parse(content)?;
-        let func_sec = FuncSection::new(section_header, idx);
+        let mut func_section = Vec::<usize>::new();
+        for type_idx in idx.iter() {
+            let wasm_func = WasmFunc::new(module_idx, type_idx.0 as usize);
+            let func_idx = store.push_function(FuncInst::W(wasm_func));
+            func_section.push(func_idx);
+        }
+        let module = store.get_module_mut(module_idx);
         if module.func_section.is_some() {
-            Err(Error::new(remaining, ErrorKind::Fail))
+            Err(Error::new(content, ErrorKind::Fail))
         } else {
-            // module.func_section = Some(func_sec);
+            module.func_section = Some(func_section);
             Ok((remaining, ()))
         }
     }
+    fn parse_code_section<'a>(
+        &self,
+        section_header: SectionHeader,
+        content: &'a [u8],
+        store: &mut GuardedGlobalStore,
+        module_idx: usize,
+    ) -> ParserResult<'a, ()> {
+        let (remaining, code) = WasmVector::<Func>::parse(content)?;
+        let func_indices = store
+            .get_module(module_idx)
+            .func_section
+            .as_ref()
+            .unwrap()
+            .clone();
+
+        if func_indices.len() != code.len() {
+            Err(Error::new(remaining, ErrorKind::Fail))
+        } else {
+            for (func_idx, func) in func_indices.iter().zip(code.into_iter()) {
+                let mut func_inst = store.get_func_mut(*func_idx);
+                if func_inst.set_wasm_func(func).is_err() {
+                    return Err(Error::new(remaining, ErrorKind::Fail));
+                }
+            }
+            Ok((remaining, ()))
+        }
+    }
+
     fn parse_table_section<'a>(
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        module: &mut WasmModule,
+        store: &mut GuardedGlobalStore,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
+        let module = store.get_module_mut(module_idx);
         let (remaining, tables) = WasmVector::<TableType>::parse(content)?;
         let table_sec = TableSection::new(section_header, tables);
         if module.table_section.is_some() {
@@ -530,8 +605,10 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        module: &mut WasmModule,
+        store: &mut GuardedGlobalStore,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
+        let module = store.get_module_mut(module_idx);
         let (remaining, imports) = WasmVector::<Import>::parse(content)?;
         let import_sec = ImportSection::new(section_header, imports);
         if module.import_section.is_some() {
@@ -545,8 +622,10 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        module: &mut WasmModule,
+        store: &mut GuardedGlobalStore,
+        module_idx: usize,
     ) -> ParserResult<'a, ()> {
+        let module = store.get_module_mut(module_idx);
         let (remaining, exports) = WasmVector::<Export>::parse(content)?;
         let export_sec = ExportSection::new(section_header, exports);
         if module.export_section.is_some() {

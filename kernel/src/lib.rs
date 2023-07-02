@@ -155,6 +155,7 @@ pub unsafe fn kernel_main(boot_info: &BootInfo) -> ! {
 
     interrupt::init().unwrap();
 
+    wasm::init().unwrap();
     test_main();
 
     cpu::qemu_exit_success()

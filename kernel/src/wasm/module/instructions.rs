@@ -1,6 +1,6 @@
 extern crate alloc;
 use super::*;
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 
 pub type OpCode = u8;
 
@@ -17,8 +17,32 @@ trait WasmInst {
     fn execute(&self) -> Self::Output;
 }
 
-// A sequence of instructions ended with 0x0B
-pub struct Expr {}
+pub struct Instruction {}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "wasm inst")
+    }
+}
+
+pub struct Expr {
+    instr: Vec<Instruction>,
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for i in self.instr.iter() {
+            writeln!(f, "{}", i)?;
+        }
+        Ok(())
+    }
+}
+
+impl Expr {
+    pub fn new() -> Self {
+        Self { instr: Vec::new() }
+    }
+}
 
 // Control Instructions
 pub enum BlockType {
