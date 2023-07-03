@@ -10,11 +10,14 @@ struct Stack {
     s: *mut u8,
 }
 
-type InstFn = fn(stack: &Stack) -> ();
+pub struct ExecContext {
+    s: Stack,
+    module_idx: Idx,
+    func_idx: Idx,
+}
 
-trait WasmInst {
-    type Output;
-    fn execute(&self) -> Self::Output;
+pub trait WasmInst: fmt::Display {
+    fn execute(&self, ctx: &ExecContext);
 }
 
 pub struct Instruction {}
@@ -25,8 +28,9 @@ impl fmt::Display for Instruction {
     }
 }
 
+pub type InstPtr = Box<dyn WasmInst + Sync + Send>;
 pub struct Expr {
-    instr: Vec<Instruction>,
+    instr: Vec<InstPtr>,
 }
 
 impl fmt::Display for Expr {

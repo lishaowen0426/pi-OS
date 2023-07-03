@@ -139,6 +139,40 @@ pub fn single_field_derive(item: TokenStream) -> TokenStream {
     _single_field_derive(item.into()).into()
 }
 
+fn _impl_display_sync_send(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let item_struct = syn::parse2::<ItemStruct>(tokens).unwrap();
+    let struct_name = item_struct.ident;
+    let fields = item_struct.fields;
+    let struct_name_str = &format!("{}", struct_name);
+
+    let (impl_generics, ty_generics, where_clause) = item_struct.generics.split_for_impl();
+    quote!(
+        unsafe impl #impl_generics Sync for #struct_name #ty_generics #where_clause{
+        }
+        unsafe impl #impl_generics Send for #struct_name #ty_generics #where_clause{
+        }
+
+        impl #impl_generics fmt::Display for #struct_name #ty_generics #where_clause{
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error>{
+                write!(f, "{}", #struct_name_str)
+            }
+        }
+
+    )
+}
+#[proc_macro_error]
+#[proc_macro_attribute]
+pub fn display_sync_send(_: TokenStream, annotated_item: TokenStream) -> TokenStream {
+    let ast: proc_macro2::TokenStream = annotated_item.clone().into();
+    let impls = _impl_display_sync_send(annotated_item.clone().into());
+    quote!(
+        #ast
+        #impls
+
+    )
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.

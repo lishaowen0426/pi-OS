@@ -16,6 +16,7 @@ use spin::once::Once;
 use test_macros::SingleField;
 
 mod instructions;
+mod opcode;
 mod parser;
 
 use instructions::*;
