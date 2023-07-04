@@ -1,6 +1,7 @@
 extern crate alloc;
 use super::*;
 use alloc::{boxed::Box, vec::Vec};
+use core::mem::transmute;
 
 pub type OpCode = u8;
 
@@ -8,6 +9,30 @@ pub type OpCode = u8;
 #[repr(transparent)]
 struct Stack {
     s: *mut u8,
+}
+
+impl Stack {
+    pub fn new(s: *mut u8) -> Self {
+        Self { s }
+    }
+
+    pub fn push<T>(&mut self, value: T) {
+        unsafe {
+            let top = transmute::<*mut u8, *mut T>(self.s);
+            top.write(value);
+            let sz = core::mem::size_of::<T>();
+            self.s = self.s.byte_add(sz);
+        }
+    }
+
+    pub fn pop<T>(&mut self) -> T {
+        unsafe {
+            let sz = core::mem::size_of::<T>();
+            self.s = self.s.byte_sub(sz);
+            let top = transmute::<*mut u8, *mut T>(self.s);
+            top.read()
+        }
+    }
 }
 
 pub struct ExecContext {
@@ -45,6 +70,10 @@ impl fmt::Display for Expr {
 impl Expr {
     pub fn new() -> Self {
         Self { instr: Vec::new() }
+    }
+
+    pub fn push_instruction(&mut self, p: InstPtr) {
+        self.instr.push(p);
     }
 }
 

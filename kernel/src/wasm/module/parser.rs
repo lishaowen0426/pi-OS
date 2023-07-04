@@ -90,7 +90,7 @@ fn take_unsigned(N: usize, input: &[u8]) -> ParserResult<'_, u64> {
             let to_or = ((*b & 0b01111111u8) as u64) << (idx * 7);
             uN = uN | to_or;
         }
-        uN = uN | (top_byte << (lower_bytes.len() * 7)) as u64;
+        uN = uN | ((top_byte as u64) << (lower_bytes.len() * 7));
         Ok((remaining, uN))
     }
 }
@@ -386,7 +386,7 @@ impl Parseable for Import {
         Ok((remaining, Import { module, nm, desc }))
     }
 }
-
+// The index of the first local is the smallest index not referencing a parameter
 impl Parseable for Locals {
     fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
         let (remaining, n) = U32::parse(input)?;
@@ -398,14 +398,19 @@ impl Parseable for Locals {
 
 impl Parseable for Expr {
     fn parse<'a>(input: &'a [u8]) -> ParserResult<'a, Self> {
-        let (remaining, insts) = take_till(|b: u8| b == 0x0Bu8)(input).finish()?;
+        let (remaining, mut insts) = take_till(|b: u8| b == 0x0Bu8)(input).finish()?;
         let (remaining, _) = tag([0x0Bu8; 1])(remaining).finish()?;
-        println!("len {}", insts.len());
-        for b in insts {
-            println!("{:#04x} ", b);
+        let mut expr = Expr::new();
+
+        while !insts.is_empty() {
+            let (r, opcode) = take(1usize)(insts).finish()?;
+            let opcode = opcode[0];
+            let (r, inst_ptr) = opcode::OP_PARSER[opcode as usize](r)?;
+            expr.push_instruction(inst_ptr);
+            insts = r;
         }
 
-        Ok((remaining, Self::new()))
+        Ok((remaining, expr))
     }
 }
 
@@ -433,7 +438,7 @@ impl WasmParser {
     pub fn parse<'a>(
         &self,
         input: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
     ) -> ParserResult<'a, Idx> {
         let module = WasmModule::new();
         let idx = store.push_module(module);
@@ -454,7 +459,7 @@ impl WasmParser {
         &self,
         input: &'a [u8],
         section_header: SectionHeader,
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let (remaining, content) = take(section_header.size.0)(input).finish()?;
@@ -485,7 +490,7 @@ impl WasmParser {
     fn check_magic_and_version_and_parse_sections<'a>(
         &self,
         input: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let mut next_section_order: u8 = SECTION_TYPE_TO_ORDER[SectionType::Type as usize];
@@ -521,7 +526,7 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let module = store.get_module_mut(module_idx);
@@ -538,7 +543,7 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let (remaining, idx) = WasmVector::<U32>::parse(content)?;
@@ -560,7 +565,7 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let (remaining, code) = WasmVector::<Func>::parse(content)?;
@@ -588,7 +593,7 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let module = store.get_module_mut(module_idx);
@@ -605,7 +610,7 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let module = store.get_module_mut(module_idx);
@@ -622,7 +627,7 @@ impl WasmParser {
         &self,
         section_header: SectionHeader,
         content: &'a [u8],
-        store: &mut GuardedGlobalStore,
+        store: &mut GlobalStoreWriteGuard,
         module_idx: usize,
     ) -> ParserResult<'a, ()> {
         let module = store.get_module_mut(module_idx);

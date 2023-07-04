@@ -1,10 +1,5 @@
 extern crate alloc;
-use crate::{
-    errno::*,
-    memory::heap,
-    synchronization::{Spinlock, SpinlockGuard},
-    type_enum, type_enum_with_error,
-};
+use crate::{errno::*, memory::heap, synchronization::*, type_enum, type_enum_with_error};
 use alloc::{slice::Iter, vec::Vec};
 use core::{
     fmt,
@@ -646,23 +641,28 @@ impl GlobalStore {
 }
 
 pub struct WasmManager {
-    store: Spinlock<GlobalStore>,
+    store: SpinRwLock<GlobalStore>,
     parser: WasmParser,
 }
 
-type GuardedGlobalStore<'a> = SpinlockGuard<'a, GlobalStore>;
+type GlobalStoreReadGuard<'a> = SpinRwLockReadGuard<'a, GlobalStore>;
+type GlobalStoreWriteGuard<'a> = SpinRwLockWriteGuard<'a, GlobalStore>;
 
 impl WasmManager {
     fn new() -> Self {
         Self {
-            store: Spinlock::new(GlobalStore::new()),
+            store: SpinRwLock::new(GlobalStore::new()),
             parser: WasmParser::new(),
         }
     }
 
     fn parse<'a>(&self, input: &'a [u8]) -> ParserResult<'a, Idx> {
-        let mut guard = self.store.lock();
+        let mut guard = self.store.write();
         self.parser.parse(input, &mut guard)
+    }
+
+    fn get_module(&self, idx: Idx) -> MappedSpinRwLockReadGuard<'_, WasmModule> {
+        SpinRwLockReadGuard::map(self.store.read(), |s: &GlobalStore| s.get_module(idx))
     }
 }
 
@@ -700,7 +700,7 @@ impl fmt::Display for WasmModule {
         }
 
         if let Some(ref s) = self.func_section {
-            let mut guarded_global_store = WASM_MANAGER.get().unwrap().store.lock();
+            let mut guarded_global_store = WASM_MANAGER.get().unwrap().store.read();
             for i in s {
                 let func_inst = guarded_global_store.get_func(*i);
                 writeln!(f, "{}", func_inst)?;
@@ -748,5 +748,7 @@ mod tests {
     #[kernel_test]
     fn test_wasm() {
         let (_, module_idx) = WASM_MANAGER.get().unwrap().parse(WASM_MODULE).unwrap();
+        let module = WASM_MANAGER.get().unwrap().get_module(module_idx);
+        println!("{}", module);
     }
 }

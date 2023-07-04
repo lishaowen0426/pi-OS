@@ -13,9 +13,9 @@ use crate::{exception, println};
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU32, Ordering},
 };
-use lock_api::{GuardSend, RawMutex};
+use lock_api::{GuardSend, RawMutex, RawRwLock};
 
 pub struct RawSpinlock {
     locked: AtomicBool,
@@ -46,6 +46,67 @@ unsafe impl RawMutex for RawSpinlock {
 
     unsafe fn unlock(&self) {
         self.locked.store(false, Ordering::Release)
+    }
+}
+
+pub struct RawRwSpinlock {
+    locked: AtomicU32,
+}
+
+impl RawRwSpinlock {
+    const fn new() -> Self {
+        Self {
+            locked: AtomicU32::new(0),
+        }
+    }
+}
+
+unsafe impl RawRwLock for RawRwSpinlock {
+    type GuardMarker = GuardSend;
+    const INIT: Self = Self::new();
+
+    fn lock_shared(&self) {
+        while !self.try_lock_shared() {}
+    }
+
+    fn try_lock_shared(&self) -> bool {
+        let mut state = self.locked.load(Ordering::Relaxed);
+        if state < u32::MAX {
+            match self.locked.compare_exchange(
+                state,
+                state + 1,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(e) => return false,
+            }
+        } else {
+            return false;
+        }
+    }
+
+    unsafe fn unlock_shared(&self) {
+        self.locked.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    fn lock_exclusive(&self) {
+        while !self.try_lock_exclusive() {}
+    }
+
+    fn try_lock_exclusive(&self) -> bool {
+        if let Ok(_) =
+            self.locked
+                .compare_exchange(0, u32::MAX, Ordering::Acquire, Ordering::Relaxed)
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    unsafe fn unlock_exclusive(&self) {
+        self.locked.store(0, Ordering::Relaxed);
     }
 }
 

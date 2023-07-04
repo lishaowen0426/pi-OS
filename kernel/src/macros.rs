@@ -1,5 +1,4 @@
 use crate::errno::*;
-
 #[macro_export]
 macro_rules! type_enum_with_error {
     ($vis:vis enum $name:ident {
@@ -224,6 +223,56 @@ macro_rules! impl_doubly_linkable {
             fn next(&self) -> Link<Self> {
                 self.next_link
             }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! opcode_0 {
+    ($op:literal,$name: ident, $exec:block) => {
+        #[display_sync_send]
+        pub struct $name;
+        impl WasmInst for $name {
+            fn execute(&self, ctx: &ExecContext) $exec
+        }
+        paste! {
+            fn [<parse_$name>](input: &[u8]) -> ParserResult<'_, InstPtr> {
+                Ok((input, Box::new($name)))
+            }
+
+            pub const [<$name:upper>]:u8 = $op;
+        }
+    };
+
+    (UndefinedOp, $exec:block) => {
+        #[display_sync_send]
+        pub struct UndefinedOp;
+        impl WasmInst for UndefinedOp {
+            fn execute(&self, ctx: &ExecContext) $exec
+        }
+        paste! {
+            fn parse_UndefinedOp (input: &[u8]) -> ParserResult<'_, InstPtr> {
+                Ok((input, Box::new(UndefinedOp)))
+            }
+
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! opcode_1 {
+    ($op:literal, $name: ident, $type:ty,  $exec:block) => {
+        #[display_sync_send]
+        pub struct $name($type);
+        impl WasmInst for $name {
+            fn execute(&self, ctx: &ExecContext) $exec
+        }
+        paste! {
+            fn [<parse_$name>](input: &[u8]) -> ParserResult<'_, InstPtr> {
+                let (remaining, x0) = $type::parse(input)?;
+                Ok((remaining, Box::new($name(x0))))
+            }
+            pub const [<$name:upper>]:u8 = $op;
         }
     };
 }
